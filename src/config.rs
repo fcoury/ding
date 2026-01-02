@@ -29,7 +29,7 @@ impl Config {
 # default_provider = "macos"
 
 [macos]
-# sound = "default"
+# sound = "default" # use "none" to disable
 # app_bundle_id = "com.apple.Terminal"
 # icon = "/path/to/icon.png"
 

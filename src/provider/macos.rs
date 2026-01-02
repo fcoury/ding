@@ -57,12 +57,18 @@ impl Provider for MacosProvider {
             .as_deref()
             .or(self.config.sound.as_deref());
         if let Some(sound) = sound_value {
-            if sound.eq_ignore_ascii_case("default") {
+            if sound.eq_ignore_ascii_case("none")
+                || sound.eq_ignore_ascii_case("off")
+                || sound.eq_ignore_ascii_case("silent")
+            {
+                // Explicitly disabled.
+            } else if sound.eq_ignore_ascii_case("default") {
                 mac.default_sound();
             } else {
                 mac.sound(Sound::from(sound));
             }
-        } else if matches!(notification.urgency, Some(Urgency::High)) {
+        } else {
+            // Default to the system alert sound when nothing is specified.
             mac.default_sound();
         }
 
