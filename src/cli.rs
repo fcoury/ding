@@ -44,21 +44,29 @@ pub enum Commands {
 
 #[derive(Debug, Args)]
 pub struct SendArgs {
-    /// Notification title
+    /// Notification title (optional)
     #[arg(long)]
-    pub title: String,
+    pub title: Option<String>,
 
     /// Notification message/body
-    #[arg(long)]
+    #[arg(value_name = "MESSAGE")]
     pub message: String,
 
     /// Icon path (provider-specific)
     #[arg(long)]
     pub icon: Option<PathBuf>,
 
+    /// Disable icon usage
+    #[arg(long)]
+    pub no_icon: bool,
+
     /// Optional URL to associate with the notification
     #[arg(long)]
     pub link: Option<String>,
+
+    /// Sound name to play (macOS)
+    #[arg(long)]
+    pub sound: Option<String>,
 
     /// Notification urgency
     #[arg(long, value_enum)]

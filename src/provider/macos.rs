@@ -52,7 +52,11 @@ impl Provider for MacosProvider {
             mac.subtitle(tag);
         }
 
-        if let Some(sound) = self.config.sound.as_deref() {
+        let sound_value = notification
+            .sound
+            .as_deref()
+            .or(self.config.sound.as_deref());
+        if let Some(sound) = sound_value {
             if sound.eq_ignore_ascii_case("default") {
                 mac.default_sound();
             } else {
@@ -66,16 +70,14 @@ impl Provider for MacosProvider {
             .icon
             .as_ref()
             .or(self.config.icon.as_ref());
-        let icon_string = icon_path.map(|icon| icon.to_string_lossy().into_owned());
-        if let Some(path) = icon_string.as_deref() {
-            mac.app_icon(path);
+        if icon_path.is_some() {
+            // Disabled: macOS 15.5 + ImageIO crashes when loading image paths in this backend.
+            // We'll rely on bundle icons instead.
         }
 
         mac.wait_for_click(options.wait_for_click);
         if options.wait_for_click {
             mac.asynchronous(false);
-        } else {
-            mac.asynchronous(true);
         }
 
         let response = mac

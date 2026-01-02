@@ -9,6 +9,7 @@ pub struct Notification {
     pub source: Option<String>,
     pub icon: Option<PathBuf>,
     pub link: Option<String>,
+    pub sound: Option<String>,
     pub urgency: Option<Urgency>,
     pub tag: Option<String>,
     pub sender: Option<String>,
