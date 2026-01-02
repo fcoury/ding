@@ -68,6 +68,10 @@ pub struct SendArgs {
     #[arg(long)]
     pub sound: Option<String>,
 
+    /// Disable notification sound
+    #[arg(long)]
+    pub silent: bool,
+
     /// Notification urgency
     #[arg(long, value_enum)]
     pub urgency: Option<UrgencyArg>,

@@ -66,13 +66,18 @@ fn handle_send(config_path: Option<&PathBuf>, args: SendArgs) -> Result<(), Noti
     if icon.is_some() && !allow_image_icons() {
         icon = None;
     }
+    let sound = if args.silent {
+        Some("none".to_string())
+    } else {
+        args.sound.clone()
+    };
     let notification = Notification {
         title,
         message: args.message,
         source: source.clone(),
         icon,
         link: args.link.clone(),
-        sound: args.sound.clone(),
+        sound,
         urgency: args.urgency.map(map_urgency),
         tag: args.tag.clone(),
         sender: None,
