@@ -6,6 +6,7 @@ use std::path::PathBuf;
 pub struct Notification {
     pub title: String,
     pub message: String,
+    pub source: Option<String>,
     pub icon: Option<PathBuf>,
     pub link: Option<String>,
     pub urgency: Option<Urgency>,

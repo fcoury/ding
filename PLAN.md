@@ -1,12 +1,12 @@
-# Notifall Plan (v1)
+# Wakedev Plan (v2)
 
 ## Goals
-- Build `notifall`, a Rust CLI notifier that supports multiple notification mediums.
+- Build `wakedev`, a Rust CLI notifier that supports multiple notification mediums.
 - Start with macOS Notification Center to replace `terminal-notifier`.
 - Keep the architecture extensible for future providers.
 
 ## Decisions (from user)
-- Project name/crate: `notifall`.
+- Project name/crate: `wakedev`.
 - Config format: TOML.
 - Default provider: if macOS detected, default to macOS provider.
 - Must-have fields for MVP: icon, title, message (when supported by provider).
@@ -40,9 +40,9 @@
 1. Define `Notification` struct (title, message, icon, urgency, tag, link, sender, dedupe_key, metadata, actions).
 2. Define TOML config model and precedence rules (CLI args override config; env optional).
 3. CLI commands:
-   - `notifall send --title --message [--icon] [--link] [--urgency] [--tag]`
-   - `notifall config init`
-   - `notifall providers list`
+   - `wakedev send --title --message [--icon] [--link] [--urgency] [--tag]`
+   - `wakedev config init`
+   - `wakedev providers list`
 4. Exit codes + logging conventions.
 
 ### Phase 2 — Provider architecture

@@ -2,7 +2,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
-#[command(name = "notifall", version, about = "Multi-provider notification CLI")]
+#[command(name = "wakedev", version, about = "Multi-provider notification CLI")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -26,6 +26,20 @@ pub enum Commands {
         #[command(subcommand)]
         command: ProvidersCmd,
     },
+    /// Manage configured sources
+    Sources {
+        #[command(subcommand)]
+        command: SourcesCmd,
+    },
+    /// Install integrations for Claude Code or Codex
+    Install(InstallArgs),
+    /// Hook entrypoint for Claude Code or Codex notify
+    Hook(HookArgs),
+    /// Focus the originating terminal/tmux context
+    Focus(FocusArgs),
+    /// Internal macOS click-wait helper
+    #[command(hide = true)]
+    WaitMacos(WaitMacosArgs),
 }
 
 #[derive(Debug, Args)]
@@ -54,6 +68,26 @@ pub struct SendArgs {
     #[arg(long)]
     pub tag: Option<String>,
 
+    /// Source identifier to resolve icon/logo (e.g. claude, codex)
+    #[arg(long)]
+    pub source: Option<String>,
+
+    /// Command to execute on click
+    #[arg(long)]
+    pub on_click: Option<String>,
+
+    /// Wait for user click (blocking)
+    #[arg(long)]
+    pub wait_for_click: bool,
+
+    /// Detach and wait for click in background (implies --wait-for-click)
+    #[arg(long)]
+    pub background: bool,
+
+    /// Output a JSON report to stdout
+    #[arg(long)]
+    pub json: bool,
+
     /// Provider override (e.g. macos)
     #[arg(long)]
     pub provider: Option<String>,
@@ -80,6 +114,69 @@ pub struct ConfigInitArgs {
 pub enum ProvidersCmd {
     /// List providers available on this platform
     List,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SourcesCmd {
+    /// List configured sources
+    List,
+}
+
+#[derive(Debug, Args)]
+pub struct InstallArgs {
+    /// Target tool (claude or codex)
+    #[arg(value_enum)]
+    pub target: InstallTarget,
+
+    /// Apply changes (default is dry-run)
+    #[arg(long)]
+    pub apply: bool,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum InstallTarget {
+    Claude,
+    Codex,
+}
+
+#[derive(Debug, Args)]
+pub struct HookArgs {
+    /// Target tool (claude or codex)
+    #[arg(value_enum)]
+    pub target: InstallTarget,
+
+    /// JSON payload (if not provided, read from stdin)
+    pub json: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct FocusArgs {
+    /// tmux session name
+    #[arg(long)]
+    pub tmux_session: Option<String>,
+
+    /// tmux window id (e.g. @1)
+    #[arg(long)]
+    pub tmux_window: Option<String>,
+
+    /// tmux pane id (e.g. %3)
+    #[arg(long)]
+    pub tmux_pane: Option<String>,
+
+    /// Terminal app name (ghostty, iterm, terminal)
+    #[arg(long)]
+    pub terminal: Option<String>,
+
+    /// Skip terminal activation
+    #[arg(long)]
+    pub no_activate: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct WaitMacosArgs {
+    /// Path to payload JSON
+    #[arg(long)]
+    pub payload: PathBuf,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

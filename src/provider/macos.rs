@@ -1,11 +1,13 @@
 use crate::config::MacosConfig;
 use crate::notification::{Notification, Urgency};
-use crate::provider::{DeliveryReport, Provider, ProviderError};
+use crate::provider::{DeliveryOutcome, DeliveryReport, Provider, ProviderError, SendOptions};
 
 #[cfg(target_os = "macos")]
 use mac_notification_sys::error::{ApplicationError, Error as MacError};
 #[cfg(target_os = "macos")]
-use mac_notification_sys::{set_application, Notification as MacNotification, Sound};
+use mac_notification_sys::{
+    set_application, Notification as MacNotification, NotificationResponse, Sound,
+};
 
 #[cfg(target_os = "macos")]
 #[derive(Debug, Clone, Default)]
@@ -38,7 +40,11 @@ impl Provider for MacosProvider {
         "macos"
     }
 
-    fn send(&self, notification: &Notification) -> Result<DeliveryReport, ProviderError> {
+    fn send(
+        &self,
+        notification: &Notification,
+        options: SendOptions,
+    ) -> Result<DeliveryReport, ProviderError> {
         let mut mac = MacNotification::new();
         mac.title(&notification.title).message(&notification.message);
 
@@ -65,14 +71,42 @@ impl Provider for MacosProvider {
             mac.app_icon(path);
         }
 
-        mac.send()
+        mac.wait_for_click(options.wait_for_click);
+        if options.wait_for_click {
+            mac.asynchronous(false);
+        } else {
+            mac.asynchronous(true);
+        }
+
+        let response = mac
+            .send()
             .map_err(|err| ProviderError::Message(err.to_string()))?;
+        let outcome = map_response(response, options.wait_for_click);
 
         Ok(DeliveryReport {
             provider: self.name(),
             id: None,
+            outcome,
         })
     }
+}
+
+#[cfg(target_os = "macos")]
+fn map_response(
+    response: NotificationResponse,
+    waited: bool,
+) -> Option<DeliveryOutcome> {
+    if !waited {
+        return None;
+    }
+    let outcome = match response {
+        NotificationResponse::None => DeliveryOutcome::Delivered,
+        NotificationResponse::Click => DeliveryOutcome::Clicked,
+        NotificationResponse::ActionButton(label) => DeliveryOutcome::ActionButton(label),
+        NotificationResponse::CloseButton(label) => DeliveryOutcome::Closed(label),
+        NotificationResponse::Reply(text) => DeliveryOutcome::Replied(text),
+    };
+    Some(outcome)
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -92,7 +126,11 @@ impl Provider for MacosProvider {
         "macos"
     }
 
-    fn send(&self, _notification: &Notification) -> Result<DeliveryReport, ProviderError> {
+    fn send(
+        &self,
+        _notification: &Notification,
+        _options: SendOptions,
+    ) -> Result<DeliveryReport, ProviderError> {
         Err(ProviderError::Unsupported)
     }
 }
