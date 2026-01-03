@@ -8,8 +8,9 @@ mod provider;
 mod remote;
 
 use crate::cli::{
-    Cli, Commands, ConfigCmd, FocusArgs, ForwardState, HookArgs, InstallArgs, ListenArgs,
-    ProvidersCmd, RemoteCmd, RemoteForwardArgs, RemotePingArgs, SendArgs, SourcesCmd, UrgencyArg,
+    Cli, Commands, ConfigCmd, ConfigSetArgs, FocusArgs, ForwardState, HookArgs, InstallArgs,
+    ListenArgs, ProvidersCmd, RemoteCmd, RemoteForwardArgs, RemotePingArgs, SendArgs, SourcesCmd,
+    UrgencyArg,
 };
 use crate::config::{Config, MacosConfig, SourceConfig};
 use crate::context::{detect_context, Context};
@@ -26,7 +27,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::str::FromStr;
 use std::time::Duration;
 
-fn main() -> Result<(), NotifallError> {
+fn main() {
+    if let Err(err) = run() {
+        eprintln!("{err}");
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<(), NotifallError> {
     let cli = Cli::parse();
 
     let config_path = cli.config.clone();
@@ -35,6 +43,9 @@ fn main() -> Result<(), NotifallError> {
         Commands::Send(args) => handle_send(config_path.as_ref(), args),
         Commands::Config { command: ConfigCmd::Init(args) } => {
             handle_config_init(config_path.as_ref(), args)
+        }
+        Commands::Config { command: ConfigCmd::Set(args) } => {
+            handle_config_set(config_path.as_ref(), args)
         }
         Commands::Providers {
             command: ProvidersCmd::List,
@@ -484,6 +495,19 @@ fn handle_remote_forward(
     };
 
     if desired {
+        if let Some(url) = args.url.as_deref() {
+            set_remote_field(&mut doc, "url", toml_edit::Value::from(url));
+        } else if remote_url_from_doc(&doc).is_none() {
+            let path_display = path.display();
+            let message = format!(
+                "Remote forwarding needs a remote URL.\n\n\
+Set it with:\n  wakedev remote forward on --url http://127.0.0.1:4280/notify\n\
+or:\n  wakedev config set remote.url http://127.0.0.1:4280/notify\n\n\
+Config file: {path_display}\n\
+If missing, run: wakedev config init"
+            );
+            return Err(NotifallError::RemoteForwardMissingUrl(message));
+        }
         let current_default = doc
             .get("default_provider")
             .and_then(|v| v.as_str())
@@ -514,20 +538,6 @@ fn handle_remote_forward(
     }
 
     let new_contents = doc.to_string();
-    if !args.apply {
-        let apply_cmd = format!(
-            "wakedev remote forward {} --apply",
-            match args.state {
-                ForwardState::On => "on",
-                ForwardState::Off => "off",
-                ForwardState::Toggle => "toggle",
-                ForwardState::Status => "status",
-            }
-        );
-        print_diff(&path, &existing, &new_contents, &apply_cmd)?;
-        return Ok(());
-    }
-
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -537,6 +547,33 @@ fn handle_remote_forward(
         if desired { "enabled" } else { "disabled" }
     );
     Ok(())
+}
+
+fn handle_config_set(
+    config_path: Option<&PathBuf>,
+    args: ConfigSetArgs,
+) -> Result<(), NotifallError> {
+    let path = config_path
+        .cloned()
+        .unwrap_or_else(default_config_path);
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    let mut doc = toml_edit::DocumentMut::from_str(&existing)?;
+    let value = parse_config_value(&args.value);
+    set_toml_key(&mut doc, &args.key, value)?;
+    let new_contents = doc.to_string();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&path, new_contents)?;
+    println!("set {} in {}", args.key, path.display());
+    Ok(())
+}
+
+fn remote_url_from_doc(doc: &toml_edit::DocumentMut) -> Option<String> {
+    doc.get("remote")
+        .and_then(|v| v.get("url"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 fn forward_enabled(doc: &toml_edit::DocumentMut) -> bool {
@@ -558,6 +595,49 @@ fn set_remote_field(doc: &mut toml_edit::DocumentMut, key: &str, value: toml_edi
     if let Some(table) = table.as_table_mut() {
         table[key] = toml_edit::Item::Value(value);
     }
+}
+
+fn parse_config_value(raw: &str) -> toml_edit::Value {
+    if raw.eq_ignore_ascii_case("true") {
+        return toml_edit::Value::from(true);
+    }
+    if raw.eq_ignore_ascii_case("false") {
+        return toml_edit::Value::from(false);
+    }
+    if let Ok(int_value) = raw.parse::<i64>() {
+        return toml_edit::Value::from(int_value);
+    }
+    toml_edit::Value::from(raw)
+}
+
+fn set_toml_key(
+    doc: &mut toml_edit::DocumentMut,
+    key: &str,
+    value: toml_edit::Value,
+) -> Result<(), NotifallError> {
+    let parts: Vec<&str> = key.split('.').collect();
+    if parts.is_empty() {
+        return Ok(());
+    }
+    let mut table = doc.as_table_mut();
+    for part in &parts[..parts.len().saturating_sub(1)] {
+        if !table.contains_key(part) {
+            table[part] = toml_edit::Item::Table(toml_edit::Table::new());
+        }
+        if !table[part].is_table() {
+            table[part] = toml_edit::Item::Table(toml_edit::Table::new());
+        }
+        if let Some(next) = table[part].as_table_mut() {
+            table = next;
+        } else {
+            return Err(NotifallError::Provider(ProviderError::Message(
+                "invalid config path".to_string(),
+            )));
+        }
+    }
+    let last = parts[parts.len() - 1];
+    table[last] = toml_edit::Item::Value(value);
+    Ok(())
 }
 
 fn handle_remote_send(

@@ -23,6 +23,8 @@ pub enum NotifallError {
     NoProviderAvailable,
     #[error("--background requires --on-click")]
     BackgroundRequiresOnClick,
+    #[error("{0}")]
+    RemoteForwardMissingUrl(String),
     #[error("HOME is not set")]
     MissingHome,
 }

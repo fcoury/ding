@@ -136,6 +136,8 @@ pub struct SendArgs {
 pub enum ConfigCmd {
     /// Create a default config file
     Init(ConfigInitArgs),
+    /// Set a config key (supports dotted paths)
+    Set(ConfigSetArgs),
 }
 
 #[derive(Debug, Args)]
@@ -147,6 +149,15 @@ pub struct ConfigInitArgs {
     /// Overwrite if the config file already exists
     #[arg(long)]
     pub force: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ConfigSetArgs {
+    /// Config key to set (e.g. remote.url)
+    pub key: String,
+
+    /// Value to set
+    pub value: String,
 }
 
 #[derive(Debug, Subcommand)]
@@ -278,9 +289,9 @@ pub struct RemoteForwardArgs {
     #[arg(value_enum)]
     pub state: ForwardState,
 
-    /// Apply changes (default is dry-run)
+    /// Remote listener URL (sets remote.url when enabling)
     #[arg(long)]
-    pub apply: bool,
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
