@@ -8,6 +8,7 @@ pub struct Config {
     pub macos: Option<MacosConfig>,
     pub remote: Option<RemoteConfig>,
     pub listener: Option<ListenerConfig>,
+    pub telegram: Option<TelegramConfig>,
     pub sources: Option<BTreeMap<String, SourceConfig>>,
 }
 
@@ -49,6 +50,14 @@ pub struct ListenerConfig {
     pub on_click: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TelegramConfig {
+    pub bot_token: Option<String>,
+    pub chat_id: Option<String>,
+    pub parse_mode: Option<String>,
+    pub silent: Option<bool>,
+}
+
 impl Config {
     pub fn template() -> &'static str {
         r#"# ding config
@@ -77,6 +86,12 @@ impl Config {
 # prefix_hostname = true
 # allow_hosts = ["127.0.0.1"]
 # on_click = "ding focus"
+
+[telegram]
+# bot_token = "123456:ABC..."
+# chat_id = "123456789"
+# parse_mode = "MarkdownV2"
+# silent = false
 
 [sources.claude]
 # icon = "/path/to/claude.icns"

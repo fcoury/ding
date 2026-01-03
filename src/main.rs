@@ -12,12 +12,15 @@ use crate::cli::{
     ListenArgs, ProvidersCmd, RemoteCmd, RemoteForwardArgs, RemotePingArgs, SendArgs, SourcesCmd,
     UrgencyArg,
 };
-use crate::config::{Config, MacosConfig, SourceConfig};
+use crate::config::{Config, MacosConfig, SourceConfig, TelegramConfig};
 use crate::context::{detect_context, Context};
 use crate::error::NotifallError;
 use crate::notification::{Notification, Urgency};
 use crate::payload::WaitPayload;
-use crate::provider::{macos::MacosProvider, DeliveryOutcome, Provider, ProviderError, SendOptions};
+use crate::provider::{
+    macos::MacosProvider, telegram::TelegramProvider, DeliveryOutcome, Provider, ProviderError,
+    SendOptions,
+};
 use crate::remote::{RemoteContext, RemoteEnvelope};
 use clap::Parser;
 use std::fs;
@@ -123,6 +126,14 @@ fn handle_send(config_path: Option<&PathBuf>, args: SendArgs) -> Result<(), Noti
                 context,
             )?;
         }
+        "telegram" => {
+            let telegram_config = resolve_telegram_config(config.as_ref(), &args)?;
+            let provider = TelegramProvider::new(telegram_config)?;
+            let report = provider.send(&notification, SendOptions { wait_for_click: false })?;
+            if args.json {
+                print_send_output("telegram", report.outcome, false, None)?;
+            }
+        }
         "remote" => {
             handle_remote_send(
                 config.as_ref(),
@@ -209,6 +220,7 @@ fn handle_config_init(
 
 fn handle_providers_list() -> Result<(), NotifallError> {
     println!("remote");
+    println!("telegram");
     if cfg!(target_os = "macos") {
         println!("macos");
     } else {
@@ -979,6 +991,30 @@ fn resolve_macos_config(
     macos
 }
 
+fn resolve_telegram_config(
+    config: Option<&Config>,
+    args: &SendArgs,
+) -> Result<TelegramConfig, NotifallError> {
+    let mut telegram = config
+        .and_then(|c| c.telegram.clone())
+        .unwrap_or_default();
+
+    if let Some(token) = args.telegram_token.as_ref() {
+        telegram.bot_token = Some(token.clone());
+    }
+    if let Some(chat_id) = args.telegram_chat_id.as_ref() {
+        telegram.chat_id = Some(chat_id.clone());
+    }
+    if let Some(parse_mode) = args.telegram_parse_mode.as_ref() {
+        telegram.parse_mode = Some(parse_mode.clone());
+    }
+    if args.telegram_silent {
+        telegram.silent = Some(true);
+    }
+
+    Ok(telegram)
+}
+
 fn default_source_icon(source: Option<&str>) -> Option<PathBuf> {
     let _ = source?;
     None
@@ -1648,6 +1684,10 @@ fn handle_claude_hook(payload: serde_json::Value) -> Result<(), NotifallError> {
         no_icon: false,
         link: None,
         sound: None,
+        telegram_token: None,
+        telegram_chat_id: None,
+        telegram_parse_mode: None,
+        telegram_silent: false,
         silent: false,
         urgency: None,
         tag: None,
@@ -1708,6 +1748,10 @@ fn handle_codex_hook(payload: serde_json::Value) -> Result<(), NotifallError> {
         no_icon: false,
         link: None,
         sound: None,
+        telegram_token: None,
+        telegram_chat_id: None,
+        telegram_parse_mode: None,
+        telegram_silent: false,
         silent: false,
         urgency: None,
         tag: None,

@@ -5,12 +5,17 @@
 - Listener defaults to binding on all interfaces.
 - Remote provider auto-fallbacks to local delivery if the listener is unreachable.
 - Prefix titles with hostname by default.
+- Forwarding can target multiple providers (remote, telegram, etc.).
+  - Default `forward on` overwrites the previous target.
+  - Optional cumulative mode appends additional targets.
+  - Turning forwarding off disables all targets but preserves their config for later re-enable.
 
 ## Goals
 
 - Show notifications from SSH/remote agents on the local machine as if they were local.
 - Keep the sender UX simple: `ding send` with a provider switch (or config default).
 - Keep click handling local so focus returns to local terminal context.
+- Allow forwarding fan-out to multiple providers (e.g., remote + telegram).
 
 ## Architecture
 
@@ -29,10 +34,23 @@
   - Options: `--remote-host`, `--remote-port`, `--remote-token`, `--remote-timeout`, `--remote-retries`.
 - `ding remote ping`
   - Health check endpoint to confirm listener connectivity.
+- `ding forward on|off|toggle|status`
+  - Turns forwarding on/off globally (all configured targets).
+  - `status` returns on/off plus configured targets.
+- `ding forward add|remove|list`
+  - `add` sets target (remote/telegram/etc.).
+  - `add --append` (or `--cumulative`) retains existing targets.
+  - `remove` removes one target from the list.
+  - `list` shows configured targets.
 
 ## Config
 
 ```toml
+[forward]
+enabled = true
+targets = ["remote", "telegram"]
+last_target = "remote"
+
 [remote]
 host = "127.0.0.1"
 port = 4280
@@ -47,6 +65,12 @@ port = 4280
 token = "..."
 require_token = true
 prefix_hostname = true
+
+[telegram]
+bot_token = "123456:ABC..."
+chat_id = "123456789"
+parse_mode = "MarkdownV2"
+disable_notification = false
 ```
 
 ## Payload
@@ -85,6 +109,7 @@ prefix_hostname = true
 
 - If remote delivery fails (timeout, refused, auth error), auto-fallback to local provider.
 - Provide a `--no-fallback` flag to disable if needed.
+- Forwarding fan-out does not stop other targets when one target fails.
 
 ## Implementation steps (proposed order)
 

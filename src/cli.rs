@@ -79,6 +79,22 @@ pub struct SendArgs {
     #[arg(long)]
     pub silent: bool,
 
+    /// Telegram bot token (telegram provider only)
+    #[arg(long)]
+    pub telegram_token: Option<String>,
+
+    /// Telegram chat ID (telegram provider only)
+    #[arg(long)]
+    pub telegram_chat_id: Option<String>,
+
+    /// Telegram parse mode (MarkdownV2 or HTML)
+    #[arg(long)]
+    pub telegram_parse_mode: Option<String>,
+
+    /// Disable Telegram notifications (telegram provider only)
+    #[arg(long)]
+    pub telegram_silent: bool,
+
     /// Notification urgency
     #[arg(long, value_enum)]
     pub urgency: Option<UrgencyArg>,

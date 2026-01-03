@@ -6,6 +6,7 @@ A multi-provider notification CLI for development workflows. Send notifications 
 
 - **Native macOS notifications** via Notification Center
 - **Remote delivery** via HTTP to receive notifications from SSH sessions
+- **Telegram notifications** via bot token + chat ID
 - **Claude Code integration** with hook-based event handling
 - **OpenAI Codex integration** for CLI notifications
 - **Context-aware click handling** that returns focus to your terminal/tmux pane
@@ -71,6 +72,12 @@ token = "your-secret-token"
 require_token = true
 prefix_hostname = true
 
+[telegram]
+bot_token = "123456:ABC..."
+chat_id = "123456789"
+parse_mode = "MarkdownV2"
+silent = false
+
 [sources.claude]
 icon = "~/.config/ding/icons/claude.icns"
 
@@ -112,7 +119,21 @@ icon = "~/.config/ding/icons/openai.icns"
 --wait-for-click       Block until notification is clicked
 --background           Detach and wait in background
 --json                 Output JSON result
---provider <NAME>      Override provider (macos, remote)
+--provider <NAME>      Override provider (macos, remote, telegram)
+
+Telegram options:
+--telegram-token <TOKEN>
+--telegram-chat-id <CHAT_ID>
+--telegram-parse-mode <MODE>
+--telegram-silent
+
+Remote options:
+--remote-host <HOST>
+--remote-port <PORT>
+--remote-token <TOKEN>
+--remote-timeout-ms <MS>
+--remote-retries <N>
+--no-fallback
 ```
 
 ## Remote Usage
@@ -138,7 +159,7 @@ ding config set remote.token "your-secret-token"
 Enable remote forwarding:
 
 ```bash
-ding remote forward on
+ding remote forward on --host YOUR_LOCAL_IP --port 4280
 ```
 
 Now notifications from the remote server appear on your local machine:
@@ -258,7 +279,7 @@ cargo build && ding send "Build succeeded" --sound default || ding send "Build f
 ding listen
 
 # Remote: enable forwarding and send
-ding remote forward on --host 192.168.1.100
+ding remote forward on --host 192.168.1.100 --port 4280
 ding send "Deployment complete"
 ```
 

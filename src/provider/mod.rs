@@ -1,6 +1,7 @@
 use crate::notification::Notification;
 
 pub mod macos;
+pub mod telegram;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SendOptions {

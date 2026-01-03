@@ -140,6 +140,12 @@ ding config set remote.port 4280
 
 # Set listener token
 ding config set listener.token "your-secret-token"
+
+# Set Telegram bot token
+ding config set telegram.bot_token "123456:ABC..."
+
+# Set Telegram chat id
+ding config set telegram.chat_id "123456789"
 ```
 
 ### Full config example
@@ -167,6 +173,12 @@ port = 4280
 token = "your-secret-token"
 require_token = true
 prefix_hostname = true
+
+[telegram]
+bot_token = "123456:ABC..."
+chat_id = "123456789"
+parse_mode = "MarkdownV2"
+silent = false
 
 [sources.claude]
 # Custom icon for Claude notifications
@@ -250,7 +262,7 @@ If you're running Claude Code over SSH, enable remote forwarding:
 ding listen
 
 # On the remote server
-ding remote forward on --host YOUR_LOCAL_IP
+ding remote forward on --host YOUR_LOCAL_IP --port 4280
 ```
 
 Now Claude Code notifications from the remote session appear on your local machine.
@@ -371,7 +383,7 @@ ding config set remote.token "your-secret-token"
 #### 3. Enable remote forwarding
 
 ```bash
-ding remote forward on
+ding remote forward on --host YOUR_LOCAL_IP --port 4280
 ```
 
 Check status:
@@ -430,6 +442,34 @@ ding config set remote.fallback_to_local true
 
 # Disable fallback
 ding send "Must reach remote" --no-fallback
+```
+
+---
+
+## Telegram Notifications
+
+### Configure Telegram
+
+```bash
+ding config set telegram.bot_token "123456:ABC..."
+ding config set telegram.chat_id "123456789"
+ding config set telegram.parse_mode "MarkdownV2"
+ding config set telegram.silent false
+```
+
+### Send a Telegram notification
+
+```bash
+ding send "Build complete" --provider telegram
+```
+
+### Override settings per message
+
+```bash
+ding send "Deploy ready" --provider telegram \
+  --telegram-token "123456:ABC..." \
+  --telegram-chat-id "123456789" \
+  --telegram-parse-mode MarkdownV2
 ```
 
 ---
@@ -642,7 +682,8 @@ ding send "Remote only" --provider remote
 | With sound | `ding send "Done" --sound default` |
 | Wait for click | `ding send "Review" --wait-for-click` |
 | Run on click | `ding send "Open" --on-click "open URL"` |
-| Remote setup | `ding listen` (local) + `ding remote forward on` (remote) |
+| Remote setup | `ding listen` (local) + `ding remote forward on --host <host> --port 4280` (remote) |
+| Telegram notify | `ding send "Message" --provider telegram` |
 | Claude integration | `ding install claude --apply` |
 | Codex integration | `ding install codex --apply` |
 | Check config | `ding config list` |
