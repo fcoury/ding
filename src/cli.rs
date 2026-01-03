@@ -37,6 +37,13 @@ pub enum Commands {
     Hook(HookArgs),
     /// Focus the originating terminal/tmux context
     Focus(FocusArgs),
+    /// Listen for remote notifications
+    Listen(ListenArgs),
+    /// Remote provider utilities
+    Remote {
+        #[command(subcommand)]
+        command: RemoteCmd,
+    },
     /// Internal macOS click-wait helper
     #[command(hide = true)]
     WaitMacos(WaitMacosArgs),
@@ -103,6 +110,26 @@ pub struct SendArgs {
     /// Provider override (e.g. macos)
     #[arg(long)]
     pub provider: Option<String>,
+
+    /// Remote listener URL (remote provider only)
+    #[arg(long)]
+    pub remote_url: Option<String>,
+
+    /// Remote listener auth token (remote provider only)
+    #[arg(long)]
+    pub remote_token: Option<String>,
+
+    /// Remote listener timeout in milliseconds (remote provider only)
+    #[arg(long)]
+    pub remote_timeout_ms: Option<u64>,
+
+    /// Remote listener retry count (remote provider only)
+    #[arg(long)]
+    pub remote_retries: Option<u32>,
+
+    /// Disable fallback to local provider if remote delivery fails
+    #[arg(long)]
+    pub no_fallback: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -189,6 +216,58 @@ pub struct WaitMacosArgs {
     /// Path to payload JSON
     #[arg(long)]
     pub payload: PathBuf,
+}
+
+#[derive(Debug, Args)]
+pub struct ListenArgs {
+    /// Bind address (default 127.0.0.1)
+    #[arg(long)]
+    pub bind: Option<String>,
+
+    /// Port to listen on (default 4280)
+    #[arg(long)]
+    pub port: Option<u16>,
+
+    /// Auth token for incoming requests
+    #[arg(long)]
+    pub token: Option<String>,
+
+    /// Require auth token even if none is configured
+    #[arg(long)]
+    pub require_token: bool,
+
+    /// Prefix notification titles with hostname
+    #[arg(long)]
+    pub prefix_hostname: bool,
+
+    /// Allowed remote hosts (repeatable)
+    #[arg(long)]
+    pub allow_host: Vec<String>,
+
+    /// Command to execute on click (defaults to \"wakedev focus\")
+    #[arg(long)]
+    pub on_click: Option<String>,
+
+    /// Disable click handling entirely
+    #[arg(long)]
+    pub no_click: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RemoteCmd {
+    /// Ping the configured remote listener
+    Ping(RemotePingArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct RemotePingArgs {
+    /// Remote listener URL
+    #[arg(long)]
+    pub remote_url: Option<String>,
+
+    /// Remote listener auth token
+    #[arg(long)]
+    pub remote_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

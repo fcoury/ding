@@ -5,23 +5,26 @@ mod error;
 mod notification;
 mod payload;
 mod provider;
+mod remote;
 
 use crate::cli::{
-    Cli, Commands, ConfigCmd, FocusArgs, HookArgs, InstallArgs, ProvidersCmd, SendArgs,
-    SourcesCmd, UrgencyArg,
+    Cli, Commands, ConfigCmd, FocusArgs, HookArgs, InstallArgs, ListenArgs, ProvidersCmd,
+    RemoteCmd, RemotePingArgs, SendArgs, SourcesCmd, UrgencyArg,
 };
 use crate::config::{Config, MacosConfig, SourceConfig};
 use crate::context::{detect_context, Context};
 use crate::error::NotifallError;
 use crate::notification::{Notification, Urgency};
 use crate::payload::WaitPayload;
-use crate::provider::{macos::MacosProvider, DeliveryOutcome, Provider, SendOptions};
+use crate::provider::{macos::MacosProvider, DeliveryOutcome, Provider, ProviderError, SendOptions};
+use crate::remote::{RemoteContext, RemoteEnvelope};
 use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::str::FromStr;
+use std::time::Duration;
 
 fn main() -> Result<(), NotifallError> {
     let cli = Cli::parse();
@@ -43,6 +46,8 @@ fn main() -> Result<(), NotifallError> {
         Commands::Hook(args) => handle_hook(args),
         Commands::Focus(args) => handle_focus(args),
         Commands::WaitMacos(args) => handle_wait_macos(args),
+        Commands::Listen(args) => handle_listen(config_path.as_ref(), args),
+        Commands::Remote { command } => handle_remote(command, config_path.as_ref()),
     }
 }
 
@@ -53,7 +58,7 @@ fn handle_send(config_path: Option<&PathBuf>, args: SendArgs) -> Result<(), Noti
     let source_config = resolve_source_config(config.as_ref(), source.as_deref());
     let context = detect_context();
 
-    if args.background && args.on_click.is_none() {
+    if args.background && args.on_click.is_none() && provider_name == "macos" {
         return Err(NotifallError::BackgroundRequiresOnClick);
     }
 
@@ -73,7 +78,7 @@ fn handle_send(config_path: Option<&PathBuf>, args: SendArgs) -> Result<(), Noti
     };
     let notification = Notification {
         title,
-        message: args.message,
+        message: args.message.clone(),
         source: source.clone(),
         icon,
         link: args.link.clone(),
@@ -85,48 +90,81 @@ fn handle_send(config_path: Option<&PathBuf>, args: SendArgs) -> Result<(), Noti
         metadata: None,
         actions: Vec::new(),
     };
+    let mut remote_notification = notification.clone();
+    remote_notification.icon = None;
 
     match provider_name.as_str() {
         "macos" => {
             let macos_config = resolve_macos_config(config.as_ref(), source_config, source.as_deref());
-
-            if args.background {
-                let payload = WaitPayload {
-                    notification,
-                    macos: macos_config,
-                    on_click: args.on_click.clone(),
-                    context,
-                };
-                let payload_path = spawn_background_wait(payload)?;
-                if args.json {
-                    print_send_output(
-                        "macos",
-                        None,
-                        true,
-                        Some(payload_path.to_string_lossy().to_string()),
-                    )?;
-                }
-                return Ok(());
-            }
-
-            let wait_for_click = args.wait_for_click || args.on_click.is_some();
-            let provider = MacosProvider::new(macos_config)?;
-            let report = provider.send(&notification, SendOptions { wait_for_click })?;
-            if wait_for_click {
-                handle_click(
-                    report.outcome.clone(),
-                    args.on_click.as_deref(),
-                    &notification,
-                    context.as_ref(),
-                )?;
-            }
-            if args.json {
-                print_send_output("macos", report.outcome, false, None)?;
-            }
+            deliver_macos(
+                notification,
+                macos_config,
+                args.on_click.clone(),
+                args.background,
+                args.wait_for_click,
+                args.json,
+                context,
+            )?;
+        }
+        "remote" => {
+            handle_remote_send(
+                config.as_ref(),
+                &args,
+                notification,
+                remote_notification,
+                context,
+                source_config,
+                source.as_deref(),
+            )?;
         }
         other => return Err(NotifallError::ProviderUnsupported(other.to_string())),
     }
 
+    Ok(())
+}
+
+fn deliver_macos(
+    notification: Notification,
+    macos_config: Option<MacosConfig>,
+    on_click: Option<String>,
+    background: bool,
+    wait_for_click: bool,
+    json: bool,
+    context: Option<Context>,
+) -> Result<(), NotifallError> {
+    if background {
+        let payload = WaitPayload {
+            notification,
+            macos: macos_config,
+            on_click,
+            context,
+        };
+        let payload_path = spawn_background_wait(payload)?;
+        if json {
+            print_send_output(
+                "macos",
+                None,
+                true,
+                Some(payload_path.to_string_lossy().to_string()),
+            )?;
+        }
+        return Ok(());
+    }
+
+    let wait_for_click = wait_for_click || on_click.is_some();
+    let provider = MacosProvider::new(macos_config)?;
+    let report = provider.send(&notification, SendOptions { wait_for_click })?;
+    if wait_for_click {
+        handle_click(
+            report.outcome.clone(),
+            on_click.as_deref(),
+            &notification,
+            context.as_ref(),
+        )?;
+    }
+    if json {
+        print_send_output("macos", report.outcome, false, None)?;
+    }
     Ok(())
 }
 
@@ -153,6 +191,7 @@ fn handle_config_init(
 }
 
 fn handle_providers_list() -> Result<(), NotifallError> {
+    println!("remote");
     if cfg!(target_os = "macos") {
         println!("macos");
     } else {
@@ -243,6 +282,315 @@ fn handle_focus(args: FocusArgs) -> Result<(), NotifallError> {
     }
 
     Ok(())
+}
+
+fn handle_listen(
+    config_path: Option<&PathBuf>,
+    args: ListenArgs,
+) -> Result<(), NotifallError> {
+    let config = load_config(config_path)?;
+    let listener_cfg = config.as_ref().and_then(|c| c.listener.clone()).unwrap_or_default();
+
+    let bind = args
+        .bind
+        .or(listener_cfg.bind)
+        .unwrap_or_else(|| "127.0.0.1".to_string());
+    let port = args.port.or(listener_cfg.port).unwrap_or(4280);
+    let token = args.token.or(listener_cfg.token);
+    let require_token = if args.require_token {
+        true
+    } else {
+        listener_cfg.require_token.unwrap_or(token.is_some())
+    };
+    let prefix_hostname = if args.prefix_hostname {
+        true
+    } else {
+        listener_cfg.prefix_hostname.unwrap_or(true)
+    };
+    let allow_hosts = if !args.allow_host.is_empty() {
+        args.allow_host
+    } else {
+        listener_cfg.allow_hosts.unwrap_or_default()
+    };
+    let on_click = if args.no_click {
+        None
+    } else {
+        args.on_click
+            .or(listener_cfg.on_click)
+            .or_else(default_focus_command)
+    };
+
+    let addr = format!("{}:{}", bind, port);
+    let server = tiny_http::Server::http(&addr)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    println!("wakedev listener on {addr}");
+
+    for mut request in server.incoming_requests() {
+        let path = request.url().split('?').next().unwrap_or("");
+        if path == "/ping" {
+            let response = json_response(200, r#"{"status":"ok"}"#);
+            let _ = request.respond(response);
+            continue;
+        }
+
+        if path != "/notify" {
+            let response = json_response(404, r#"{"error":"not found"}"#);
+            let _ = request.respond(response);
+            continue;
+        }
+
+        if request.method() != &tiny_http::Method::Post {
+            let response = json_response(405, r#"{"error":"method not allowed"}"#);
+            let _ = request.respond(response);
+            continue;
+        }
+
+        if !allow_hosts.is_empty() {
+            if let Some(remote) = request.remote_addr() {
+                let host = remote.ip().to_string();
+                if !allow_hosts.iter().any(|allowed| allowed == &host) {
+                    let response = json_response(403, r#"{"error":"forbidden"}"#);
+                    let _ = request.respond(response);
+                    continue;
+                }
+            }
+        }
+
+        if require_token {
+            let incoming = extract_token(request.headers());
+            if token.as_deref() != incoming.as_deref() {
+                let response = json_response(401, r#"{"error":"unauthorized"}"#);
+                let _ = request.respond(response);
+                continue;
+            }
+        }
+
+        let mut body = String::new();
+        if request.as_reader().read_to_string(&mut body).is_err() {
+            let response = json_response(400, r#"{"error":"invalid body"}"#);
+            let _ = request.respond(response);
+            continue;
+        }
+
+        let envelope: RemoteEnvelope = match serde_json::from_str(&body) {
+            Ok(payload) => payload,
+            Err(_) => {
+                let response = json_response(400, r#"{"error":"invalid json"}"#);
+                let _ = request.respond(response);
+                continue;
+            }
+        };
+
+        let mut notification = envelope.notification;
+        notification.icon = None;
+        if notification.title.trim().is_empty() {
+            notification.title = "Notification".to_string();
+        }
+
+        if prefix_hostname {
+            if let Some(host) = envelope
+                .context
+                .as_ref()
+                .and_then(|ctx| ctx.origin_host.as_deref())
+            {
+                let prefix = format!("{host}: ");
+                if !notification.title.starts_with(&prefix) {
+                    notification.title = format!("{prefix}{}", notification.title);
+                }
+            }
+        }
+
+        let source_key = notification.source.as_deref();
+        let source_config = resolve_source_config(config.as_ref(), source_key);
+        let macos_config = resolve_macos_config(config.as_ref(), source_config, source_key);
+
+        let local_context = detect_context();
+        let _ = deliver_macos(
+            notification,
+            macos_config,
+            on_click.clone(),
+            on_click.is_some(),
+            false,
+            false,
+            local_context,
+        );
+
+        let response = json_response(200, r#"{"status":"ok"}"#);
+        let _ = request.respond(response);
+    }
+
+    Ok(())
+}
+
+fn handle_remote(command: RemoteCmd, config_path: Option<&PathBuf>) -> Result<(), NotifallError> {
+    match command {
+        RemoteCmd::Ping(args) => handle_remote_ping(args, config_path),
+    }
+}
+
+fn handle_remote_ping(
+    args: RemotePingArgs,
+    config_path: Option<&PathBuf>,
+) -> Result<(), NotifallError> {
+    let config = load_config(config_path)?;
+    let remote_cfg = config.and_then(|c| c.remote).unwrap_or_default();
+    let url = args
+        .remote_url
+        .or(remote_cfg.url)
+        .unwrap_or_else(default_remote_url);
+    let token = args.remote_token.or(remote_cfg.token);
+    let ping_url = to_ping_url(&url);
+
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_millis(2000))
+        .timeout_read(Duration::from_millis(2000))
+        .build();
+    let mut request = agent.get(&ping_url);
+    if let Some(token) = token.as_deref() {
+        request = request.set("Authorization", &format!("Bearer {token}"));
+    }
+    match request.call() {
+        Ok(_) => {
+            println!("ok");
+            Ok(())
+        }
+        Err(err) => Err(NotifallError::Provider(
+            ProviderError::Message(format!("remote ping failed: {err}")),
+        )),
+    }
+}
+
+fn handle_remote_send(
+    config: Option<&Config>,
+    args: &SendArgs,
+    notification: Notification,
+    remote_notification: Notification,
+    context: Option<Context>,
+    source_config: Option<&SourceConfig>,
+    source: Option<&str>,
+) -> Result<(), NotifallError> {
+    let remote_cfg = config.and_then(|c| c.remote.clone()).unwrap_or_default();
+    let url = args
+        .remote_url
+        .clone()
+        .or(remote_cfg.url)
+        .unwrap_or_else(default_remote_url);
+    let token = args.remote_token.clone().or(remote_cfg.token);
+    let timeout_ms = args.remote_timeout_ms.or(remote_cfg.timeout_ms).unwrap_or(2000);
+    let retries = args.remote_retries.or(remote_cfg.retries).unwrap_or(2);
+    let fallback = !args.no_fallback && remote_cfg.fallback_to_local.unwrap_or(true);
+
+    let envelope = RemoteEnvelope {
+        notification: remote_notification,
+        context: Some(RemoteContext::from_local(context.clone())),
+    };
+
+    let send_result = send_remote_request(&url, token.as_deref(), timeout_ms, retries, &envelope);
+    if send_result.is_ok() {
+        if args.json {
+            print_send_output("remote", None, false, None)?;
+        }
+        return Ok(());
+    }
+
+    if fallback && cfg!(target_os = "macos") {
+        let macos_config = resolve_macos_config(config, source_config, source);
+        return deliver_macos(
+            notification,
+            macos_config,
+            args.on_click.clone(),
+            args.background,
+            args.wait_for_click,
+            args.json,
+            context,
+        );
+    }
+
+    send_result
+}
+
+fn send_remote_request(
+    url: &str,
+    token: Option<&str>,
+    timeout_ms: u64,
+    retries: u32,
+    envelope: &RemoteEnvelope,
+) -> Result<(), NotifallError> {
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_millis(timeout_ms))
+        .timeout_read(Duration::from_millis(timeout_ms))
+        .build();
+    let body = serde_json::to_value(envelope)?;
+    let mut last_err = None;
+
+    for _ in 0..=retries {
+        let mut request = agent.post(url).set("Content-Type", "application/json");
+        if let Some(token) = token {
+            request = request.set("Authorization", &format!("Bearer {token}"));
+        }
+        match request.send_json(body.clone()) {
+            Ok(response) => {
+                if response.status() >= 200 && response.status() < 300 {
+                    return Ok(());
+                }
+                last_err = Some(format!("remote error: status {}", response.status()));
+            }
+            Err(ureq::Error::Status(code, _)) => {
+                last_err = Some(format!("remote error: status {}", code));
+            }
+            Err(err) => {
+                last_err = Some(format!("remote error: {err}"));
+            }
+        }
+    }
+
+    Err(NotifallError::Provider(ProviderError::Message(
+        last_err.unwrap_or_else(|| "remote error".to_string()),
+    )))
+}
+
+fn default_remote_url() -> String {
+    "http://127.0.0.1:4280/notify".to_string()
+}
+
+fn to_ping_url(url: &str) -> String {
+    if url.ends_with("/notify") {
+        return url.trim_end_matches("/notify").to_string() + "/ping";
+    }
+    if url.ends_with('/') {
+        return format!("{url}ping");
+    }
+    format!("{url}/ping")
+}
+
+fn default_focus_command() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    Some(format!("{} focus", exe.display()))
+}
+
+fn extract_token(headers: &[tiny_http::Header]) -> Option<String> {
+    for header in headers {
+        let name = header.field.as_str().to_string();
+        if name.eq_ignore_ascii_case("authorization") {
+            let value = header.value.as_str();
+            if let Some(token) = value.strip_prefix("Bearer ") {
+                return Some(token.to_string());
+            }
+        }
+        if name.eq_ignore_ascii_case("x-wakedev-token") {
+            return Some(header.value.as_str().to_string());
+        }
+    }
+    None
+}
+
+fn json_response(status: u16, body: &str) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
+    let mut response = tiny_http::Response::from_string(body.to_string());
+    let header = tiny_http::Header::from_bytes("Content-Type", "application/json").ok();
+    if let Some(header) = header {
+        response.add_header(header);
+    }
+    response.with_status_code(status)
 }
 
 fn handle_wait_macos(args: crate::cli::WaitMacosArgs) -> Result<(), NotifallError> {
@@ -1012,6 +1360,11 @@ fn handle_claude_hook(payload: serde_json::Value) -> Result<(), NotifallError> {
         background: true,
         json: false,
         provider: None,
+        remote_url: None,
+        remote_token: None,
+        remote_timeout_ms: None,
+        remote_retries: None,
+        no_fallback: false,
     };
 
     handle_send(None, args)
@@ -1066,6 +1419,11 @@ fn handle_codex_hook(payload: serde_json::Value) -> Result<(), NotifallError> {
         background: true,
         json: false,
         provider: None,
+        remote_url: None,
+        remote_token: None,
+        remote_timeout_ms: None,
+        remote_retries: None,
+        no_fallback: false,
     };
 
     handle_send(None, args)

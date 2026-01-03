@@ -6,6 +6,8 @@ use std::path::PathBuf;
 pub struct Config {
     pub default_provider: Option<String>,
     pub macos: Option<MacosConfig>,
+    pub remote: Option<RemoteConfig>,
+    pub listener: Option<ListenerConfig>,
     pub sources: Option<BTreeMap<String, SourceConfig>>,
 }
 
@@ -23,6 +25,26 @@ pub struct SourceConfig {
     pub display_name: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RemoteConfig {
+    pub url: Option<String>,
+    pub token: Option<String>,
+    pub timeout_ms: Option<u64>,
+    pub retries: Option<u32>,
+    pub fallback_to_local: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ListenerConfig {
+    pub bind: Option<String>,
+    pub port: Option<u16>,
+    pub token: Option<String>,
+    pub require_token: Option<bool>,
+    pub prefix_hostname: Option<bool>,
+    pub allow_hosts: Option<Vec<String>>,
+    pub on_click: Option<String>,
+}
+
 impl Config {
     pub fn template() -> &'static str {
         r#"# wakedev config
@@ -32,6 +54,22 @@ impl Config {
 # sound = "default" # use "none" to disable
 # app_bundle_id = "com.apple.Terminal"
 # icon = "/path/to/icon.png"
+
+[remote]
+# url = "http://127.0.0.1:4280/notify"
+# token = "..."
+# timeout_ms = 2000
+# retries = 2
+# fallback_to_local = true
+
+[listener]
+# bind = "127.0.0.1"
+# port = 4280
+# token = "..."
+# require_token = true
+# prefix_hostname = true
+# allow_hosts = ["127.0.0.1"]
+# on_click = "wakedev focus"
 
 [sources.claude]
 # icon = "/path/to/claude.icns"
