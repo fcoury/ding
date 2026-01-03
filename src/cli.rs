@@ -231,7 +231,7 @@ pub struct WaitMacosArgs {
 
 #[derive(Debug, Args)]
 pub struct ListenArgs {
-    /// Bind address (default 127.0.0.1)
+    /// Bind address (default 0.0.0.0)
     #[arg(long)]
     pub bind: Option<String>,
 

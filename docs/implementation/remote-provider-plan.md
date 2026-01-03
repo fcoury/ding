@@ -2,7 +2,7 @@
 
 ## Decisions
 
-- Listener defaults to localhost only.
+- Listener defaults to binding on all interfaces.
 - Remote provider auto-fallbacks to local delivery if the listener is unreachable.
 - Prefix titles with hostname by default.
 
@@ -23,7 +23,7 @@
 - `wakedev listen`
   - Starts an HTTP listener for incoming notifications.
   - Options: `--bind`, `--port`, `--token`, `--allow-host`, `--foreground/--daemon`, `--pidfile`.
-  - Defaults: bind `127.0.0.1`, port `4280`.
+  - Defaults: bind `0.0.0.0`, port `4280`.
 - `wakedev send --provider remote`
   - Sends to listener (`remote.url` or `--remote-url`).
   - Options: `--remote-url`, `--remote-token`, `--remote-timeout`, `--remote-retries`.
@@ -41,7 +41,7 @@ retries = 2
 fallback_to_local = true
 
 [listener]
-bind = "127.0.0.1"
+bind = "0.0.0.0"
 port = 4280
 token = "..."
 require_token = true
@@ -72,7 +72,7 @@ prefix_hostname = true
 ## Security
 
 - Token-based auth in header (`Authorization: Bearer <token>` or `X-Wakedev-Token`).
-- Listener defaults to localhost-only and rejects non-local by default.
+- Listener defaults to binding on all interfaces and should be protected with token auth and allowlists.
 - Optional allowlist for hostnames/IPs.
 
 ## Click handling
@@ -97,7 +97,7 @@ prefix_hostname = true
 ## SSH usage example
 
 - Local machine:
-  - `wakedev listen --bind 127.0.0.1 --port 4280`
+  - `wakedev listen --bind 0.0.0.0 --port 4280`
 - Remote machine:
   - `ssh -L 4280:127.0.0.1:4280 user@remote-host`
   - `wakedev send --provider remote --remote-url http://127.0.0.1:4280/notify "done"`

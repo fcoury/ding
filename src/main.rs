@@ -305,7 +305,7 @@ fn handle_listen(
     let bind = args
         .bind
         .or(listener_cfg.bind)
-        .unwrap_or_else(|| "127.0.0.1".to_string());
+        .unwrap_or_else(|| "0.0.0.0".to_string());
     let port = args.port.or(listener_cfg.port).unwrap_or(4280);
     let token = args.token.or(listener_cfg.token);
     let require_token = if args.require_token {
