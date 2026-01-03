@@ -404,9 +404,9 @@ fn handle_listen(
                 .as_ref()
                 .and_then(|ctx| ctx.origin_host.as_deref())
             {
-                let prefix = format!("{host}: ");
-                if !notification.title.starts_with(&prefix) {
-                    notification.title = format!("{prefix}{}", notification.title);
+                let suffix = format!(" [{host}]");
+                if !notification.title.ends_with(&suffix) {
+                    notification.title = format!("{}{}", notification.title, suffix);
                 }
             }
         }
