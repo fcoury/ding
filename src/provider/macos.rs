@@ -1,5 +1,5 @@
 use crate::config::MacosConfig;
-use crate::notification::{Notification, Urgency};
+use crate::notification::Notification;
 use crate::provider::{DeliveryOutcome, DeliveryReport, Provider, ProviderError, SendOptions};
 
 #[cfg(target_os = "macos")]
