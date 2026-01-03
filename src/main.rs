@@ -261,7 +261,7 @@ fn handle_focus(args: FocusArgs) -> Result<(), NotifallError> {
     let terminal = args
         .terminal
         .clone()
-        .or_else(|| std::env::var("WAKEDEV_TERMINAL_APP").ok())
+        .or_else(|| std::env::var("DING_TERMINAL_APP").ok())
         .or_else(|| std::env::var("TERM_PROGRAM").ok());
 
     if !args.no_activate {
@@ -270,13 +270,13 @@ fn handle_focus(args: FocusArgs) -> Result<(), NotifallError> {
 
     let tmux_session = args
         .tmux_session
-        .or_else(|| std::env::var("WAKEDEV_TMUX_SESSION").ok());
+        .or_else(|| std::env::var("DING_TMUX_SESSION").ok());
     let tmux_window = args
         .tmux_window
-        .or_else(|| std::env::var("WAKEDEV_TMUX_WINDOW").ok());
+        .or_else(|| std::env::var("DING_TMUX_WINDOW").ok());
     let tmux_pane = args
         .tmux_pane
-        .or_else(|| std::env::var("WAKEDEV_TMUX_PANE").ok());
+        .or_else(|| std::env::var("DING_TMUX_PANE").ok());
 
     if tmux_session.is_none() && tmux_window.is_none() && tmux_pane.is_none() {
         return Ok(());
@@ -340,7 +340,7 @@ fn handle_listen(
     let addr = format!("{}:{}", bind, port);
     let server = tiny_http::Server::http(&addr)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-    println!("wakedev listener on {addr}");
+    println!("ding listener on {addr}");
 
     for mut request in server.incoming_requests() {
         let path = request.url().split('?').next().unwrap_or("");
@@ -520,10 +520,10 @@ fn handle_remote_forward(
             let path_display = path.display();
             let message = format!(
                 "Remote forwarding needs a remote host.\n\n\
-Set it with:\n  wakedev remote forward on --host mba --port 4280\n\
-or:\n  wakedev config set remote.host mba\n  wakedev config set remote.port 4280\n\n\
+Set it with:\n  ding remote forward on --host mba --port 4280\n\
+or:\n  ding config set remote.host mba\n  ding config set remote.port 4280\n\n\
 Config file: {path_display}\n\
-If missing, run: wakedev config init"
+If missing, run: ding config init"
             );
             return Err(NotifallError::RemoteForwardMissingHost(message));
         }
@@ -866,7 +866,7 @@ fn extract_token(headers: &[tiny_http::Header]) -> Option<String> {
                 return Some(token.to_string());
             }
         }
-        if name.eq_ignore_ascii_case("x-wakedev-token") {
+        if name.eq_ignore_ascii_case("x-ding-token") {
             return Some(header.value.as_str().to_string());
         }
     }
@@ -935,14 +935,14 @@ fn resolve_title(
     if let Some(source) = source {
         return title_from_source(source);
     }
-    "Wakedev".to_string()
+    "Ding".to_string()
 }
 
 fn title_from_source(source: &str) -> String {
     let mut chars = source.chars();
     match chars.next() {
         Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        None => "Wakedev".to_string(),
+        None => "Ding".to_string(),
     }
 }
 
@@ -989,8 +989,8 @@ fn default_source_bundle_id(source: Option<&str>) -> Option<String> {
     if source == "claude" {
         return ensure_source_bundle(
             "claude",
-            "Wakedev Claude",
-            "com.wakedev.claude",
+            "Ding Claude",
+            "com.ding.claude",
             include_bytes!(
                 "../assets/brands/anthropic/claude/icons/claude-symbol-clay.icns"
             ),
@@ -999,8 +999,8 @@ fn default_source_bundle_id(source: Option<&str>) -> Option<String> {
     if source == "codex" {
         return ensure_source_bundle(
             "codex",
-            "Wakedev Codex",
-            "com.wakedev.codex",
+            "Ding Codex",
+            "com.ding.codex",
             include_bytes!("../assets/brands/codex/icons/openai-blossom-light.icns"),
         );
     }
@@ -1017,7 +1017,7 @@ fn ensure_source_bundle(
         .map(PathBuf::from)
         .or_else(|_| std::env::var("HOME").map(|h| PathBuf::from(h).join(".cache")))
         .unwrap_or_else(|_| std::env::temp_dir());
-    let app_dir = base_dir.join("wakedev/apps").join(format!("{}.app", source));
+    let app_dir = base_dir.join("ding/apps").join(format!("{}.app", source));
     let contents = app_dir.join("Contents");
     let macos = contents.join("MacOS");
     let resources = contents.join("Resources");
@@ -1052,7 +1052,7 @@ fn ensure_source_bundle(
   <key>CFBundleShortVersionString</key>
   <string>{}</string>
   <key>CFBundleExecutable</key>
-  <string>wakedev-helper</string>
+  <string>ding-helper</string>
   <key>CFBundleIconFile</key>
   <string>{}</string>
   <key>LSUIElement</key>
@@ -1067,7 +1067,7 @@ fn ensure_source_bundle(
         }
     }
 
-    let exec_path = macos.join("wakedev-helper");
+    let exec_path = macos.join("ding-helper");
     if !exec_path.exists() {
         let script = b"#!/bin/sh\nexit 0\n";
         if fs::write(&exec_path, script).is_err() {
@@ -1090,7 +1090,7 @@ fn ensure_source_bundle(
 }
 
 fn allow_image_icons() -> bool {
-    std::env::var("WAKEDEV_ALLOW_IMAGE_ICONS").map(|v| v == "1").unwrap_or(false)
+    std::env::var("DING_ALLOW_IMAGE_ICONS").map(|v| v == "1").unwrap_or(false)
 }
 
 fn write_if_changed(path: &PathBuf, contents: &[u8]) -> Result<bool, std::io::Error> {
@@ -1105,12 +1105,12 @@ fn write_if_changed(path: &PathBuf, contents: &[u8]) -> Result<bool, std::io::Er
 
 fn default_config_path() -> PathBuf {
     if let Ok(dir) = std::env::var("XDG_CONFIG_HOME") {
-        return PathBuf::from(dir).join("wakedev/config.toml");
+        return PathBuf::from(dir).join("ding/config.toml");
     }
     if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home).join(".config/wakedev/config.toml");
+        return PathBuf::from(home).join(".config/ding/config.toml");
     }
-    PathBuf::from("wakedev.toml")
+    PathBuf::from("ding.toml")
 }
 
 fn resolve_provider(
@@ -1160,27 +1160,27 @@ fn handle_click(
     let mut child = Command::new("sh");
     child.arg("-c").arg(cmd);
     if let Some(source) = notification.source.as_deref() {
-        child.env("WAKEDEV_SOURCE", source);
+        child.env("DING_SOURCE", source);
     }
-    child.env("WAKEDEV_TITLE", &notification.title);
-    child.env("WAKEDEV_MESSAGE", &notification.message);
+    child.env("DING_TITLE", &notification.title);
+    child.env("DING_MESSAGE", &notification.message);
     if let Some(tag) = notification.tag.as_deref() {
-        child.env("WAKEDEV_TAG", tag);
+        child.env("DING_TAG", tag);
     }
     if let Some(context) = context {
         if let Some(tmux) = context.tmux.as_ref() {
-            child.env("WAKEDEV_TMUX_SESSION", &tmux.session);
-            child.env("WAKEDEV_TMUX_WINDOW", &tmux.window);
-            child.env("WAKEDEV_TMUX_PANE", &tmux.pane);
+            child.env("DING_TMUX_SESSION", &tmux.session);
+            child.env("DING_TMUX_WINDOW", &tmux.window);
+            child.env("DING_TMUX_PANE", &tmux.pane);
             if let Some(client) = tmux.client.as_deref() {
-                child.env("WAKEDEV_TMUX_CLIENT", client);
+                child.env("DING_TMUX_CLIENT", client);
             }
         }
         if let Some(terminal) = context.terminal.as_ref().and_then(|t| t.app.as_deref()) {
-            child.env("WAKEDEV_TERMINAL_APP", terminal);
+            child.env("DING_TERMINAL_APP", terminal);
         }
         if let Ok(json) = serde_json::to_string(context) {
-            child.env("WAKEDEV_CONTEXT_JSON", json);
+            child.env("DING_CONTEXT_JSON", json);
         }
     }
 
@@ -1215,7 +1215,7 @@ fn write_payload(payload: WaitPayload) -> Result<PathBuf, NotifallError> {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
-    let file_name = format!("wakedev-payload-{}-{}.json", std::process::id(), ts);
+    let file_name = format!("ding-payload-{}-{}.json", std::process::id(), ts);
     let path = std::env::temp_dir().join(file_name);
     let data = serde_json::to_vec(&payload)?;
     fs::write(&path, data)?;
@@ -1312,7 +1312,7 @@ fn install_claude(apply: bool) -> Result<(), NotifallError> {
             &settings_path,
             &settings,
             &new_contents,
-            "wakedev install claude --apply",
+            "ding install claude --apply",
         )?;
         return Ok(());
     }
@@ -1346,7 +1346,7 @@ fn install_codex(apply: bool) -> Result<(), NotifallError> {
             &config_path,
             &config,
             &new_contents,
-            "wakedev install codex --apply",
+            "ding install codex --apply",
         )?;
         return Ok(());
     }
@@ -1384,12 +1384,12 @@ fn print_diff(
 ) -> Result<(), NotifallError> {
     let temp_dir = std::env::temp_dir();
     let old_path = temp_dir.join(format!(
-        "wakedev-old-{}-{}",
+        "ding-old-{}-{}",
         std::process::id(),
         path.file_name().and_then(|s| s.to_str()).unwrap_or("file")
     ));
     let new_path = temp_dir.join(format!(
-        "wakedev-new-{}-{}",
+        "ding-new-{}-{}",
         std::process::id(),
         path.file_name().and_then(|s| s.to_str()).unwrap_or("file")
     ));

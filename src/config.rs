@@ -51,7 +51,7 @@ pub struct ListenerConfig {
 
 impl Config {
     pub fn template() -> &'static str {
-        r#"# wakedev config
+        r#"# ding config
 # default_provider = "macos"
 
 [macos]
@@ -70,13 +70,13 @@ impl Config {
 # previous_provider = "macos"
 
 [listener]
-# bind = "127.0.0.1"
+# bind = "0.0.0.0"
 # port = 4280
 # token = "..."
 # require_token = true
 # prefix_hostname = true
 # allow_hosts = ["127.0.0.1"]
-# on_click = "wakedev focus"
+# on_click = "ding focus"
 
 [sources.claude]
 # icon = "/path/to/claude.icns"

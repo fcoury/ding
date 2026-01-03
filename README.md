@@ -1,4 +1,4 @@
-# wakedev
+# ding
 
 A multi-provider notification CLI for development workflows. Send notifications from local or remote sessions, with native macOS support and integrations for Claude Code and OpenAI Codex.
 
@@ -16,8 +16,8 @@ A multi-provider notification CLI for development workflows. Send notifications 
 ### From source
 
 ```bash
-git clone https://github.com/fcoury/wakedev.git
-cd wakedev
+git clone https://github.com/fcoury/ding.git
+cd ding
 cargo install --path .
 ```
 
@@ -30,16 +30,16 @@ cargo install --path .
 
 ```bash
 # Send a simple notification
-wakedev send "Build complete"
+ding send "Build complete"
 
 # With title and sound
-wakedev send "All tests passed" --title "Tests" --sound default
+ding send "All tests passed" --title "Tests" --sound default
 
 # Wait for click before continuing
-wakedev send "Review needed" --wait-for-click
+ding send "Review needed" --wait-for-click
 
 # Execute command on click
-wakedev send "Deploy ready" --on-click "open https://example.com"
+ding send "Deploy ready" --on-click "open https://example.com"
 ```
 
 ## Configuration
@@ -47,10 +47,10 @@ wakedev send "Deploy ready" --on-click "open https://example.com"
 Create a config file:
 
 ```bash
-wakedev config init
+ding config init
 ```
 
-Config location: `~/.config/wakedev/config.toml`
+Config location: `~/.config/ding/config.toml`
 
 ```toml
 default_provider = "macos"
@@ -72,10 +72,10 @@ require_token = true
 prefix_hostname = true
 
 [sources.claude]
-icon = "~/.config/wakedev/icons/claude.icns"
+icon = "~/.config/ding/icons/claude.icns"
 
 [sources.codex]
-icon = "~/.config/wakedev/icons/openai.icns"
+icon = "~/.config/ding/icons/openai.icns"
 ```
 
 ## Commands
@@ -122,7 +122,7 @@ icon = "~/.config/wakedev/icons/openai.icns"
 Start the listener:
 
 ```bash
-wakedev listen --token "your-secret-token"
+ding listen --token "your-secret-token"
 ```
 
 ### On a remote server (sender)
@@ -130,21 +130,21 @@ wakedev listen --token "your-secret-token"
 Configure remote delivery:
 
 ```bash
-wakedev config set remote.host "your-local-ip"
-wakedev config set remote.port 4280
-wakedev config set remote.token "your-secret-token"
+ding config set remote.host "your-local-ip"
+ding config set remote.port 4280
+ding config set remote.token "your-secret-token"
 ```
 
 Enable remote forwarding:
 
 ```bash
-wakedev remote forward on
+ding remote forward on
 ```
 
 Now notifications from the remote server appear on your local machine:
 
 ```bash
-wakedev send "Remote build complete"
+ding send "Remote build complete"
 ```
 
 ## Claude Code Integration
@@ -153,10 +153,10 @@ wakedev send "Remote build complete"
 
 ```bash
 # View installation instructions
-wakedev install claude
+ding install claude
 
 # Apply the integration
-wakedev install claude --apply
+ding install claude --apply
 ```
 
 This adds a hook to `~/.claude/settings.json`:
@@ -167,7 +167,7 @@ This adds a hook to `~/.claude/settings.json`:
     "Notification": [
       {
         "matcher": "",
-        "hooks": ["wakedev hook claude"]
+        "hooks": ["ding hook claude"]
       }
     ]
   }
@@ -176,7 +176,7 @@ This adds a hook to `~/.claude/settings.json`:
 
 ### How it works
 
-When Claude Code emits events, wakedev receives them and shows appropriate notifications:
+When Claude Code emits events, ding receives them and shows appropriate notifications:
 
 - **High urgency**: Permission prompts, failures, auth issues
 - **Normal urgency**: Task completion, file changes
@@ -190,10 +190,10 @@ Click a notification to return focus to your Claude Code session.
 
 ```bash
 # View installation instructions
-wakedev install codex
+ding install codex
 
 # Apply the integration
-wakedev install codex --apply
+ding install codex --apply
 ```
 
 Works the same as Claude Code integration, processing Codex CLI events into notifications.
@@ -202,10 +202,10 @@ Works the same as Claude Code integration, processing Codex CLI events into noti
 
 | Variable | Description |
 |----------|-------------|
-| `WAKEDEV_TERMINAL_APP` | Override detected terminal app |
-| `WAKEDEV_TMUX_SESSION` | Override tmux session |
-| `WAKEDEV_TMUX_WINDOW` | Override tmux window |
-| `WAKEDEV_TMUX_PANE` | Override tmux pane |
+| `DING_TERMINAL_APP` | Override detected terminal app |
+| `DING_TMUX_SESSION` | Override tmux session |
+| `DING_TMUX_WINDOW` | Override tmux window |
+| `DING_TMUX_PANE` | Override tmux pane |
 
 ## Click Handler Environment
 
@@ -213,15 +213,15 @@ When `--on-click` runs, these environment variables are set:
 
 | Variable | Description |
 |----------|-------------|
-| `WAKEDEV_SOURCE` | Notification source |
-| `WAKEDEV_TITLE` | Notification title |
-| `WAKEDEV_MESSAGE` | Notification message |
-| `WAKEDEV_TAG` | Notification tag |
-| `WAKEDEV_TMUX_SESSION` | Originating tmux session |
-| `WAKEDEV_TMUX_WINDOW` | Originating tmux window |
-| `WAKEDEV_TMUX_PANE` | Originating tmux pane |
-| `WAKEDEV_TERMINAL_APP` | Originating terminal app |
-| `WAKEDEV_CONTEXT_JSON` | Full context as JSON |
+| `DING_SOURCE` | Notification source |
+| `DING_TITLE` | Notification title |
+| `DING_MESSAGE` | Notification message |
+| `DING_TAG` | Notification tag |
+| `DING_TMUX_SESSION` | Originating tmux session |
+| `DING_TMUX_WINDOW` | Originating tmux window |
+| `DING_TMUX_PANE` | Originating tmux pane |
+| `DING_TERMINAL_APP` | Originating terminal app |
+| `DING_CONTEXT_JSON` | Full context as JSON |
 
 ## Listener Security
 
@@ -231,7 +231,7 @@ The listener supports:
 - **Host allowlist**: `--allow-host` to restrict by IP/hostname
 
 ```bash
-wakedev listen \
+ding listen \
   --token "secret" \
   --require-token \
   --allow-host 192.168.1.0/24
@@ -242,30 +242,30 @@ wakedev listen \
 ### Build notifications
 
 ```bash
-cargo build && wakedev send "Build succeeded" --sound default || wakedev send "Build failed" --urgency high
+cargo build && ding send "Build succeeded" --sound default || ding send "Build failed" --urgency high
 ```
 
 ### Long-running task
 
 ```bash
-./long-task.sh && wakedev send "Task complete" --wait-for-click --on-click "wakedev focus"
+./long-task.sh && ding send "Task complete" --wait-for-click --on-click "ding focus"
 ```
 
 ### Remote SSH workflow
 
 ```bash
 # Local: start listener
-wakedev listen
+ding listen
 
 # Remote: enable forwarding and send
-wakedev remote forward on --host 192.168.1.100
-wakedev send "Deployment complete"
+ding remote forward on --host 192.168.1.100
+ding send "Deployment complete"
 ```
 
 ### Background notification
 
 ```bash
-wakedev send "Review when ready" --background --on-click "open https://github.com/pr/123"
+ding send "Review when ready" --background --on-click "open https://github.com/pr/123"
 ```
 
 ## License

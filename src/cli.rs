@@ -2,7 +2,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
-#[command(name = "wakedev", version, about = "Multi-provider notification CLI")]
+#[command(name = "ding", version, about = "Multi-provider notification CLI")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -263,7 +263,7 @@ pub struct ListenArgs {
     #[arg(long)]
     pub allow_host: Vec<String>,
 
-    /// Command to execute on click (defaults to \"wakedev focus\")
+    /// Command to execute on click (defaults to \"ding focus\")
     #[arg(long)]
     pub on_click: Option<String>,
 

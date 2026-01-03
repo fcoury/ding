@@ -9,7 +9,7 @@
 ## Goals
 
 - Show notifications from SSH/remote agents on the local machine as if they were local.
-- Keep the sender UX simple: `wakedev send` with a provider switch (or config default).
+- Keep the sender UX simple: `ding send` with a provider switch (or config default).
 - Keep click handling local so focus returns to local terminal context.
 
 ## Architecture
@@ -20,14 +20,14 @@
 
 ## CLI
 
-- `wakedev listen`
+- `ding listen`
   - Starts an HTTP listener for incoming notifications.
   - Options: `--bind`, `--port`, `--token`, `--allow-host`, `--foreground/--daemon`, `--pidfile`.
   - Defaults: bind `0.0.0.0`, port `4280`.
-- `wakedev send --provider remote`
+- `ding send --provider remote`
   - Sends to listener (`remote.host`/`remote.port` or `--remote-host`/`--remote-port`).
   - Options: `--remote-host`, `--remote-port`, `--remote-token`, `--remote-timeout`, `--remote-retries`.
-- `wakedev remote ping`
+- `ding remote ping`
   - Health check endpoint to confirm listener connectivity.
 
 ## Config
@@ -72,13 +72,13 @@ prefix_hostname = true
 
 ## Security
 
-- Token-based auth in header (`Authorization: Bearer <token>` or `X-Wakedev-Token`).
+- Token-based auth in header (`Authorization: Bearer <token>` or `X-Ding-Token`).
 - Listener defaults to binding on all interfaces and should be protected with token auth and allowlists.
 - Optional allowlist for hostnames/IPs.
 
 ## Click handling
 
-- Listener attaches `on_click` with local `wakedev focus` to restore the local context.
+- Listener attaches `on_click` with local `ding focus` to restore the local context.
 - Preserve incoming metadata so we can route to specific terminal panes later.
 
 ## Fallback behavior
@@ -98,7 +98,7 @@ prefix_hostname = true
 ## SSH usage example
 
 - Local machine:
-  - `wakedev listen --bind 0.0.0.0 --port 4280`
+  - `ding listen --bind 0.0.0.0 --port 4280`
 - Remote machine:
   - `ssh -L 4280:127.0.0.1:4280 user@remote-host`
-  - `wakedev send --provider remote --remote-host 127.0.0.1 --remote-port 4280 "done"`
+  - `ding send --provider remote --remote-host 127.0.0.1 --remote-port 4280 "done"`

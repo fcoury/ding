@@ -1,4 +1,4 @@
-# Wakedev Implementation Plan: Sources + Click Handling (macOS)
+# Ding Implementation Plan: Sources + Click Handling (macOS)
 
 ## Goals
 - Identify notification source (Claude, Codex, etc.) and resolve logo/icon automatically.
@@ -27,7 +27,7 @@
    - Provider defaults
 
 ## Phase 2 — CLI surface
-1. `wakedev send` adds:
+1. `ding send` adds:
    - `--source <string>`
    - `--on-click <command>`
    - `--wait-for-click`

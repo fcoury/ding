@@ -3,10 +3,10 @@
 ## Goals
 
 - Provide stable, low-friction notification hooks for Claude Code and Codex CLI.
-- Normalize event data into `wakedev send` calls with consistent titles, urgency, and message bodies.
+- Normalize event data into `ding send` calls with consistent titles, urgency, and message bodies.
 - Keep integration simple: a single script per tool that can be installed and called from hooks or pipelines.
 
-## Common Event Model (wakedev-facing)
+## Common Event Model (ding-facing)
 
 Map any tool event into this payload:
 
@@ -26,7 +26,7 @@ Suggested default mapping:
 
 ### Hook strategy
 
-Use Claude Code hooks to invoke a script that reads JSON from stdin and translates it to `wakedev send`.
+Use Claude Code hooks to invoke a script that reads JSON from stdin and translates it to `ding send`.
 
 Recommended hooks to enable:
 
@@ -39,11 +39,11 @@ Recommended hooks to enable:
 
 - Input: JSON on stdin (Claude hook payload).
 - Output: none, exit code 0.
-- Behavior: map `hook_event_name` + event-specific fields to a `wakedev send` call.
+- Behavior: map `hook_event_name` + event-specific fields to a `ding send` call.
 
 ### Example hook script (shell + python JSON parsing)
 
-Save as `wakedev-claude-hook` and make executable.
+Save as `ding-claude-hook` and make executable.
 
 ```bash
 #!/usr/bin/env bash
@@ -78,7 +78,7 @@ else:
     message = data.get("message") or data.get("prompt") or ""
 
 cmd = [
-    "wakedev", "send",
+    "ding", "send",
     "--title", title,
     "--message", message,
     "--urgency", urgency,
@@ -96,10 +96,10 @@ This is a conceptual example; follow Claude Code docs to register hooks.
 ```
 // settings.json (illustrative)
 "hooks": {
-  "Notification": ["/usr/local/bin/wakedev-claude-hook"],
-  "PostToolUse": ["/usr/local/bin/wakedev-claude-hook"],
-  "Stop": ["/usr/local/bin/wakedev-claude-hook"],
-  "SessionEnd": ["/usr/local/bin/wakedev-claude-hook"]
+  "Notification": ["/usr/local/bin/ding-claude-hook"],
+  "PostToolUse": ["/usr/local/bin/ding-claude-hook"],
+  "Stop": ["/usr/local/bin/ding-claude-hook"],
+  "SessionEnd": ["/usr/local/bin/ding-claude-hook"]
 }
 ```
 
@@ -112,10 +112,10 @@ Codex CLI does not have hook configs. The recommended approach is to:
 
 ### Option A: `codex exec --json` pipeline
 
-Run codex and pipe to a watcher that emits `wakedev` notifications.
+Run codex and pipe to a watcher that emits `ding` notifications.
 
 ```bash
-codex exec --json "<prompt>" | wakedev-codex-hook
+codex exec --json "<prompt>" | ding-codex-hook
 ```
 
 ### Option B: tail session JSONL logs
@@ -123,12 +123,12 @@ codex exec --json "<prompt>" | wakedev-codex-hook
 If you want background notifications while codex is running:
 
 ```bash
-tail -F "$CODEX_HOME/sessions/$(date +%Y/%m/%d)"/rollout-*.jsonl | wakedev-codex-hook
+tail -F "$CODEX_HOME/sessions/$(date +%Y/%m/%d)"/rollout-*.jsonl | ding-codex-hook
 ```
 
 ### Example Codex hook script
 
-Save as `wakedev-codex-hook` and make executable.
+Save as `ding-codex-hook` and make executable.
 
 ```bash
 #!/usr/bin/env bash
@@ -139,7 +139,7 @@ import json, sys, subprocess
 
 def notify(title, message, urgency="normal"):
     subprocess.run([
-        "wakedev", "send",
+        "ding", "send",
         "--title", title,
         "--message", message,
         "--urgency", urgency,
@@ -174,17 +174,17 @@ for line in sys.stdin:
 PY
 ```
 
-## Suggested wakedev CLI behavior (future)
+## Suggested ding CLI behavior (future)
 
 These would make integrations smoother:
 
-- `wakedev send --json` for programmatic outputs.
-- `wakedev send --dedupe-key` to avoid repeated notifications.
-- `wakedev send --title-from stdin` to support streaming usage.
-- `wakedev config set` for faster CLI integration.
+- `ding send --json` for programmatic outputs.
+- `ding send --dedupe-key` to avoid repeated notifications.
+- `ding send --title-from stdin` to support streaming usage.
+- `ding config set` for faster CLI integration.
 
 ## Open Questions
 
-- Should we add a built-in `wakedev hooks` module to install these scripts automatically?
-- Do we want a reusable `wakedev watch codex` and `wakedev hook claude` subcommand?
+- Should we add a built-in `ding hooks` module to install these scripts automatically?
+- Do we want a reusable `ding watch codex` and `ding hook claude` subcommand?
 - Should `--urgency` default to `high` for any `permission_*` notifications?
