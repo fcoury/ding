@@ -8,9 +8,9 @@ mod provider;
 mod remote;
 
 use crate::cli::{
-    Cli, Commands, ConfigCmd, ConfigSetArgs, FocusArgs, ForwardState, HookArgs, InstallArgs,
-    ListenArgs, ProvidersCmd, RemoteCmd, RemoteForwardArgs, RemotePingArgs, SendArgs, SourcesCmd,
-    TelegramChatIdArgs, TelegramCmd, UrgencyArg,
+    Cli, Commands, ConfigCmd, ConfigSetArgs, FocusArgs, ForwardCmd, ForwardOnArgs, ForwardTarget,
+    HookArgs, InstallArgs, ListenArgs, ProvidersCmd, RemoteCmd, RemotePingArgs, SendArgs,
+    SourcesCmd, TelegramChatIdArgs, TelegramCmd, UrgencyArg,
 };
 use crate::config::{Config, MacosConfig, SourceConfig, TelegramConfig};
 use crate::context::{detect_context, Context};
@@ -68,6 +68,7 @@ fn run() -> Result<(), NotifallError> {
         Commands::WaitMacos(args) => handle_wait_macos(args),
         Commands::Listen(args) => handle_listen(config_path.as_ref(), args),
         Commands::Remote { command } => handle_remote(command, config_path.as_ref()),
+        Commands::Forward { command } => handle_forward(command, config_path.as_ref()),
         Commands::Telegram { command } => handle_telegram(command, config_path.as_ref()),
     }
 }
@@ -125,6 +126,17 @@ fn handle_send(config_path: Option<&PathBuf>, args: SendArgs) -> Result<(), Noti
                 args.wait_for_click,
                 args.json,
                 context,
+            )?;
+        }
+        "forward" => {
+            handle_forward_send(
+                config.as_ref(),
+                &args,
+                notification,
+                remote_notification,
+                context,
+                source_config,
+                source.as_deref(),
             )?;
         }
         "telegram" => {
@@ -220,6 +232,7 @@ fn handle_config_init(
 }
 
 fn handle_providers_list() -> Result<(), NotifallError> {
+    println!("forward");
     println!("remote");
     println!("telegram");
     if cfg!(target_os = "macos") {
@@ -455,7 +468,6 @@ fn handle_listen(
 fn handle_remote(command: RemoteCmd, config_path: Option<&PathBuf>) -> Result<(), NotifallError> {
     match command {
         RemoteCmd::Ping(args) => handle_remote_ping(args, config_path),
-        RemoteCmd::Forward(args) => handle_remote_forward(args, config_path),
     }
 }
 
@@ -607,8 +619,8 @@ fn handle_remote_ping(
     }
 }
 
-fn handle_remote_forward(
-    args: RemoteForwardArgs,
+fn handle_forward(
+    command: ForwardCmd,
     config_path: Option<&PathBuf>,
 ) -> Result<(), NotifallError> {
     let path = config_path
@@ -617,67 +629,37 @@ fn handle_remote_forward(
     let existing = fs::read_to_string(&path).unwrap_or_default();
     let mut doc = toml_edit::DocumentMut::from_str(&existing)?;
 
-    let enabled = forward_enabled(&doc);
-    let desired = match args.state {
-        ForwardState::Status => {
-            let state = if enabled { "on" } else { "off" };
-            println!("{state}");
+    match command {
+        ForwardCmd::Status => {
+            let enabled = forward_enabled_from_doc(&doc);
+            let targets = forward_targets_from_doc(&doc);
+            println!("forwarding: {}", if enabled { "on" } else { "off" });
+            if targets.is_empty() {
+                println!("targets: (none)");
+            } else {
+                println!("targets: {}", targets.join(", "));
+            }
             return Ok(());
         }
-        ForwardState::Toggle => !enabled,
-        ForwardState::On => true,
-        ForwardState::Off => false,
-    };
-
-    if desired {
-        if let Some(host) = args.host.as_deref() {
-            set_remote_field(&mut doc, "host", toml_edit::Value::from(host));
+        ForwardCmd::Off => {
+            set_forward_enabled(&mut doc, false);
         }
-        if let Some(port) = args.port {
-            set_remote_field(&mut doc, "port", toml_edit::Value::from(port as i64));
-        }
-
-        if remote_host_from_doc(&doc).is_none() {
-            let path_display = path.display();
-            let message = format!(
-                "Remote forwarding needs a remote host.\n\n\
-Set it with:\n  ding remote forward on --host mba --port 4280\n\
-or:\n  ding config set remote.host mba\n  ding config set remote.port 4280\n\n\
-Config file: {path_display}\n\
-If missing, run: ding config init"
-            );
-            return Err(NotifallError::RemoteForwardMissingHost(message));
-        }
-
-        if remote_port_from_doc(&doc).is_none() {
-            set_remote_field(&mut doc, "port", toml_edit::Value::from(4280i64));
-        }
-        let current_default = doc
-            .get("default_provider")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        if let Some(current) = current_default.as_deref() {
-            if current != "remote" {
-                set_remote_field(&mut doc, "previous_provider", toml_edit::Value::from(current));
+        ForwardCmd::Toggle => {
+            let enabled = forward_enabled_from_doc(&doc);
+            if enabled {
+                set_forward_enabled(&mut doc, false);
+            } else {
+                let targets = forward_targets_from_doc(&doc);
+                if targets.is_empty() {
+                    return Err(NotifallError::RemoteForwardMissingHost(
+                        forward_missing_targets_message(&path),
+                    ));
+                }
+                set_forward_enabled(&mut doc, true);
             }
         }
-        doc["default_provider"] = toml_edit::value("remote");
-        set_remote_field(&mut doc, "forward_enabled", toml_edit::Value::from(true));
-    } else {
-        set_remote_field(&mut doc, "forward_enabled", toml_edit::Value::from(false));
-        let previous = doc
-            .get("remote")
-            .and_then(|v| v.get("previous_provider"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        if let Some(prev) = previous.as_deref() {
-            if prev != "remote" {
-                doc["default_provider"] = toml_edit::value(prev);
-            }
-        } else if cfg!(target_os = "macos") {
-            doc["default_provider"] = toml_edit::value("macos");
-        } else {
-            doc.remove("default_provider");
+        ForwardCmd::On(args) => {
+            apply_forward_on(&mut doc, &path, &args)?;
         }
     }
 
@@ -687,8 +669,8 @@ If missing, run: ding config init"
     }
     fs::write(&path, new_contents)?;
     println!(
-        "remote forwarding {}",
-        if desired { "enabled" } else { "disabled" }
+        "forwarding {}",
+        if forward_enabled_from_doc(&doc) { "enabled" } else { "disabled" }
     );
     Ok(())
 }
@@ -757,17 +739,115 @@ fn remote_port_from_doc(doc: &toml_edit::DocumentMut) -> Option<u16> {
         .or_else(|| remote_url_from_doc(doc).and_then(|url| parse_remote_url(&url).map(|t| t.1)))
 }
 
-fn forward_enabled(doc: &toml_edit::DocumentMut) -> bool {
-    if let Some(enabled) = doc
-        .get("remote")
-        .and_then(|v| v.get("forward_enabled"))
+fn forward_enabled_from_doc(doc: &toml_edit::DocumentMut) -> bool {
+    doc.get("forward")
+        .and_then(|v| v.get("enabled"))
         .and_then(|v| v.as_bool())
-    {
-        return enabled;
+        .unwrap_or(false)
+}
+
+fn forward_targets_from_doc(doc: &toml_edit::DocumentMut) -> Vec<String> {
+    doc.get("forward")
+        .and_then(|v| v.get("targets"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn set_forward_enabled(doc: &mut toml_edit::DocumentMut, enabled: bool) {
+    let table = doc.entry("forward").or_insert(toml_edit::table());
+    if let Some(table) = table.as_table_mut() {
+        table["enabled"] = toml_edit::Item::Value(toml_edit::Value::from(enabled));
     }
-    matches!(
-        doc.get("default_provider").and_then(|v| v.as_str()),
-        Some("remote")
+}
+
+fn set_forward_targets(doc: &mut toml_edit::DocumentMut, targets: &[String]) {
+    let table = doc.entry("forward").or_insert(toml_edit::table());
+    if let Some(table) = table.as_table_mut() {
+        let mut arr = toml_edit::Array::new();
+        for target in targets {
+            arr.push(target.as_str());
+        }
+        table["targets"] = toml_edit::Item::Value(toml_edit::Value::Array(arr));
+    }
+}
+
+fn apply_forward_on(
+    doc: &mut toml_edit::DocumentMut,
+    path: &PathBuf,
+    args: &ForwardOnArgs,
+) -> Result<(), NotifallError> {
+    let mut targets = forward_targets_from_doc(doc);
+    let provided = args
+        .targets
+        .iter()
+        .map(|t| match t {
+            ForwardTarget::Remote => "remote".to_string(),
+            ForwardTarget::Telegram => "telegram".to_string(),
+        })
+        .collect::<Vec<_>>();
+
+    if args.append {
+        for target in provided {
+            if !targets.contains(&target) {
+                targets.push(target);
+            }
+        }
+    } else if !provided.is_empty() {
+        targets = provided;
+    }
+
+    if targets.is_empty() {
+        return Err(NotifallError::RemoteForwardMissingHost(
+            forward_missing_targets_message(path),
+        ));
+    }
+
+    if targets.iter().any(|t| t == "remote") {
+        if let Some(host) = args.host.as_deref() {
+            set_remote_field(doc, "host", toml_edit::Value::from(host));
+        }
+        if let Some(port) = args.port {
+            set_remote_field(doc, "port", toml_edit::Value::from(port as i64));
+        }
+        if remote_host_from_doc(doc).is_none() {
+            return Err(NotifallError::RemoteForwardMissingHost(
+                forward_missing_remote_message(path),
+            ));
+        }
+        if remote_port_from_doc(doc).is_none() {
+            set_remote_field(doc, "port", toml_edit::Value::from(4280i64));
+        }
+    }
+
+    set_forward_targets(doc, &targets);
+    set_forward_enabled(doc, true);
+    Ok(())
+}
+
+fn forward_missing_targets_message(path: &PathBuf) -> String {
+    format!(
+        "Forwarding needs at least one target.\n\n\
+Set it with:\n  ding forward on remote --host mba --port 4280\n\
+or:\n  ding forward on telegram\n\n\
+Config file: {}\n\
+If missing, run: ding config init",
+        path.display()
+    )
+}
+
+fn forward_missing_remote_message(path: &PathBuf) -> String {
+    format!(
+        "Forwarding to remote needs a host.\n\n\
+Set it with:\n  ding forward on remote --host mba --port 4280\n\
+or:\n  ding config set remote.host mba\n  ding config set remote.port 4280\n\n\
+Config file: {}\n\
+If missing, run: ding config init",
+        path.display()
     )
 }
 
@@ -877,6 +957,102 @@ fn handle_remote_send(
     }
 
     send_result
+}
+
+fn handle_forward_send(
+    config: Option<&Config>,
+    args: &SendArgs,
+    notification: Notification,
+    remote_notification: Notification,
+    context: Option<Context>,
+    source_config: Option<&SourceConfig>,
+    source: Option<&str>,
+) -> Result<(), NotifallError> {
+    let targets = config
+        .and_then(|c| c.forward.as_ref())
+        .and_then(|f| f.targets.clone())
+        .unwrap_or_default();
+
+    if targets.is_empty() {
+        return Err(NotifallError::Provider(ProviderError::Message(
+            "forward targets are not configured".to_string(),
+        )));
+    }
+
+    #[derive(serde::Serialize)]
+    struct ForwardResult {
+        provider: String,
+        ok: bool,
+        error: Option<String>,
+    }
+
+    let mut results = Vec::new();
+    let mut successes = 0usize;
+
+    for target in targets {
+        let result = match target.as_str() {
+            "remote" => handle_remote_send(
+                config,
+                args,
+                notification.clone(),
+                remote_notification.clone(),
+                context.clone(),
+                source_config,
+                source,
+            )
+            .map_err(|e| e.to_string()),
+            "telegram" => match resolve_telegram_config(config, args) {
+                Ok(telegram_config) => match TelegramProvider::new(telegram_config) {
+                    Ok(provider) => provider
+                        .send(&notification, SendOptions { wait_for_click: false })
+                        .map(|_| ())
+                        .map_err(|e| e.to_string()),
+                    Err(err) => Err(err.to_string()),
+                },
+                Err(err) => Err(err.to_string()),
+            },
+            other => Err(format!("unknown forward target: {}", other)),
+        };
+
+        match result {
+            Ok(()) => {
+                successes += 1;
+                results.push(ForwardResult {
+                    provider: target,
+                    ok: true,
+                    error: None,
+                });
+            }
+            Err(err) => {
+                results.push(ForwardResult {
+                    provider: target,
+                    ok: false,
+                    error: Some(err),
+                });
+            }
+        }
+    }
+
+    if args.json {
+        let output = serde_json::json!({
+            "provider": "forward",
+            "results": results,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    }
+
+    if successes == 0 {
+        return Err(NotifallError::Provider(ProviderError::Message(
+            "forwarding failed for all targets".to_string(),
+        )));
+    }
+
+    let failed = results.iter().filter(|r| !r.ok).count();
+    if failed > 0 && !args.json {
+        eprintln!("forwarding: {} target(s) failed", failed);
+    }
+
+    Ok(())
 }
 
 fn send_remote_request(
@@ -1265,12 +1441,12 @@ fn resolve_provider(
     if let Some(provider) = cli_provider {
         return Ok(provider.to_lowercase());
     }
-    if let Some(remote_enabled) = config
-        .and_then(|c| c.remote.as_ref())
-        .and_then(|r| r.forward_enabled)
+    if let Some(enabled) = config
+        .and_then(|c| c.forward.as_ref())
+        .and_then(|f| f.enabled)
     {
-        if remote_enabled {
-            return Ok("remote".to_string());
+        if enabled {
+            return Ok("forward".to_string());
         }
     }
     if let Some(default_provider) = config.and_then(|c| c.default_provider.as_ref()) {

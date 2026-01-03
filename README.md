@@ -65,6 +65,10 @@ port = 4280
 token = "your-secret-token"
 fallback_to_local = true
 
+[forward]
+enabled = true
+targets = ["remote", "telegram"]
+
 [listener]
 bind = "0.0.0.0"
 port = 4280
@@ -96,7 +100,7 @@ icon = "~/.config/ding/icons/openai.icns"
 | `config path` | Show config file location |
 | `listen` | Start HTTP listener for remote notifications |
 | `remote ping` | Test connection to remote listener |
-| `remote forward {on\|off\|toggle\|status}` | Manage remote forwarding |
+| `forward {on\|off\|toggle\|status}` | Manage forwarding |
 | `telegram chat-id` | Fetch Telegram chat IDs |
 | `install {claude\|codex}` | Show integration setup |
 | `hook {claude\|codex}` | Process hook events |
@@ -157,10 +161,16 @@ ding config set remote.port 4280
 ding config set remote.token "your-secret-token"
 ```
 
-Enable remote forwarding:
+Enable forwarding:
 
 ```bash
-ding remote forward on --host YOUR_LOCAL_IP --port 4280
+ding forward on remote --host YOUR_LOCAL_IP --port 4280
+```
+
+Add Telegram as an additional target:
+
+```bash
+ding forward on telegram --append
 ```
 
 Now notifications from the remote server appear on your local machine:
@@ -280,7 +290,7 @@ cargo build && ding send "Build succeeded" --sound default || ding send "Build f
 ding listen
 
 # Remote: enable forwarding and send
-ding remote forward on --host 192.168.1.100 --port 4280
+ding forward on remote --host 192.168.1.100 --port 4280
 ding send "Deployment complete"
 ```
 

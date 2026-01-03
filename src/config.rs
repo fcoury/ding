@@ -8,6 +8,7 @@ pub struct Config {
     pub macos: Option<MacosConfig>,
     pub remote: Option<RemoteConfig>,
     pub listener: Option<ListenerConfig>,
+    pub forward: Option<ForwardConfig>,
     pub telegram: Option<TelegramConfig>,
     pub sources: Option<BTreeMap<String, SourceConfig>>,
 }
@@ -35,8 +36,6 @@ pub struct RemoteConfig {
     pub timeout_ms: Option<u64>,
     pub retries: Option<u32>,
     pub fallback_to_local: Option<bool>,
-    pub forward_enabled: Option<bool>,
-    pub previous_provider: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -58,6 +57,12 @@ pub struct TelegramConfig {
     pub silent: Option<bool>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ForwardConfig {
+    pub enabled: Option<bool>,
+    pub targets: Option<Vec<String>>,
+}
+
 impl Config {
     pub fn template() -> &'static str {
         r#"# ding config
@@ -75,8 +80,10 @@ impl Config {
 # timeout_ms = 2000
 # retries = 2
 # fallback_to_local = true
-# forward_enabled = true
-# previous_provider = "macos"
+
+[forward]
+# enabled = true
+# targets = ["remote", "telegram"]
 
 [listener]
 # bind = "0.0.0.0"

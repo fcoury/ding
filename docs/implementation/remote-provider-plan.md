@@ -36,12 +36,11 @@
   - Health check endpoint to confirm listener connectivity.
 - `ding forward on|off|toggle|status`
   - Turns forwarding on/off globally (all configured targets).
+  - `on` accepts targets (remote/telegram) and overwrites by default.
+  - Example: `ding forward on remote --host <host> --port 4280`
+  - Example: `ding forward on telegram --append`
+  - `on --append` retains existing targets and adds new ones.
   - `status` returns on/off plus configured targets.
-- `ding forward add|remove|list`
-  - `add` sets target (remote/telegram/etc.).
-  - `add --append` (or `--cumulative`) retains existing targets.
-  - `remove` removes one target from the list.
-  - `list` shows configured targets.
 
 ## Config
 
@@ -49,7 +48,6 @@
 [forward]
 enabled = true
 targets = ["remote", "telegram"]
-last_target = "remote"
 
 [remote]
 host = "127.0.0.1"
@@ -70,7 +68,7 @@ prefix_hostname = true
 bot_token = "123456:ABC..."
 chat_id = "123456789"
 parse_mode = "MarkdownV2"
-disable_notification = false
+silent = false
 ```
 
 ## Payload

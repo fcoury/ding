@@ -44,6 +44,11 @@ pub enum Commands {
         #[command(subcommand)]
         command: RemoteCmd,
     },
+    /// Forward notifications to one or more targets
+    Forward {
+        #[command(subcommand)]
+        command: ForwardCmd,
+    },
     /// Telegram provider utilities
     Telegram {
         #[command(subcommand)]
@@ -297,8 +302,43 @@ pub struct ListenArgs {
 pub enum RemoteCmd {
     /// Ping the configured remote listener
     Ping(RemotePingArgs),
-    /// Toggle remote forwarding for all notifications
-    Forward(RemoteForwardArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ForwardCmd {
+    /// Enable forwarding
+    On(ForwardOnArgs),
+    /// Disable forwarding
+    Off,
+    /// Toggle forwarding
+    Toggle,
+    /// Show forwarding status
+    Status,
+}
+
+#[derive(Debug, Args)]
+pub struct ForwardOnArgs {
+    /// Forward targets (remote, telegram)
+    #[arg(value_enum)]
+    pub targets: Vec<ForwardTarget>,
+
+    /// Append targets instead of replacing
+    #[arg(long)]
+    pub append: bool,
+
+    /// Remote listener host (sets remote.host)
+    #[arg(long)]
+    pub host: Option<String>,
+
+    /// Remote listener port (sets remote.port)
+    #[arg(long)]
+    pub port: Option<u16>,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum ForwardTarget {
+    Remote,
+    Telegram,
 }
 
 #[derive(Debug, Subcommand)]
@@ -331,29 +371,6 @@ pub struct RemotePingArgs {
     /// Remote listener auth token
     #[arg(long)]
     pub remote_token: Option<String>,
-}
-
-#[derive(Debug, Args)]
-pub struct RemoteForwardArgs {
-    /// Desired forward state
-    #[arg(value_enum)]
-    pub state: ForwardState,
-
-    /// Remote listener host (sets remote.host when enabling)
-    #[arg(long)]
-    pub host: Option<String>,
-
-    /// Remote listener port (sets remote.port when enabling)
-    #[arg(long)]
-    pub port: Option<u16>,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum ForwardState {
-    On,
-    Off,
-    Toggle,
-    Status,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

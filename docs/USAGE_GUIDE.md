@@ -167,6 +167,10 @@ timeout_ms = 2000
 retries = 2
 fallback_to_local = true
 
+[forward]
+enabled = true
+targets = ["remote", "telegram"]
+
 [listener]
 bind = "0.0.0.0"
 port = 4280
@@ -255,14 +259,14 @@ echo '{"type":"task_complete","message":"Refactoring done"}' | ding hook claude
 
 ### Using with remote sessions
 
-If you're running Claude Code over SSH, enable remote forwarding:
+If you're running Claude Code over SSH, enable forwarding:
 
 ```bash
 # On your local machine
 ding listen
 
 # On the remote server
-ding remote forward on --host YOUR_LOCAL_IP --port 4280
+ding forward on remote --host YOUR_LOCAL_IP --port 4280
 ```
 
 Now Claude Code notifications from the remote session appear on your local machine.
@@ -380,16 +384,22 @@ ding config set remote.port 4280
 ding config set remote.token "your-secret-token"
 ```
 
-#### 3. Enable remote forwarding
+#### 3. Enable forwarding
 
 ```bash
-ding remote forward on --host YOUR_LOCAL_IP --port 4280
+ding forward on remote --host YOUR_LOCAL_IP --port 4280
 ```
 
 Check status:
 
 ```bash
-ding remote forward status
+ding forward status
+```
+
+Add Telegram as an additional target:
+
+```bash
+ding forward on telegram --append
 ```
 
 #### 4. Test connection
@@ -624,9 +634,9 @@ ding send "Remote only" --provider remote
 
 4. Check firewall allows port 4280
 
-5. Verify remote forwarding is enabled:
+5. Verify forwarding is enabled:
    ```bash
-   ding remote forward status
+   ding forward status
    ```
 
 ### Click handler not working
@@ -694,7 +704,7 @@ ding send "Remote only" --provider remote
 | With sound | `ding send "Done" --sound default` |
 | Wait for click | `ding send "Review" --wait-for-click` |
 | Run on click | `ding send "Open" --on-click "open URL"` |
-| Remote setup | `ding listen` (local) + `ding remote forward on --host <host> --port 4280` (remote) |
+| Remote setup | `ding listen` (local) + `ding forward on remote --host <host> --port 4280` (remote) |
 | Telegram notify | `ding send "Message" --provider telegram` |
 | Claude integration | `ding install claude --apply` |
 | Codex integration | `ding install codex --apply` |
