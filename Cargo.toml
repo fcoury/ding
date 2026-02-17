@@ -14,5 +14,3 @@ libc = "0.2.178"
 tiny_http = "0.12.0"
 ureq = { version = "2.12.1", features = ["json"] }
 
-[target.'cfg(target_os = "macos")'.dependencies]
-mac-notification-sys = "0.6.9"

@@ -247,6 +247,10 @@ pub struct FocusArgs {
     #[arg(long)]
     pub tmux_pane: Option<String>,
 
+    /// Project name for terminal focus helpers (e.g. Ghostty tab matching)
+    #[arg(long)]
+    pub project: Option<String>,
+
     /// Terminal app name (ghostty, iterm, terminal)
     #[arg(long)]
     pub terminal: Option<String>,

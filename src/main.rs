@@ -24,6 +24,7 @@ use crate::provider::{
 use crate::remote::{RemoteContext, RemoteEnvelope};
 use clap::Parser;
 use std::fs;
+use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -61,6 +62,152 @@ fn debug_log(message: &str) {
         }
     }
     eprintln!("[ding debug] {message}");
+}
+
+fn logs_dir() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("XDG_CONFIG_HOME") {
+        return Some(PathBuf::from(dir).join("ding/logs"));
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        return Some(PathBuf::from(home).join(".config/ding/logs"));
+    }
+    None
+}
+
+fn log_hook_payload(
+    source: &str,
+    payload: &serde_json::Value,
+    project: Option<&str>,
+) {
+    let Some(dir) = logs_dir() else {
+        return;
+    };
+    if fs::create_dir_all(&dir).is_err() {
+        debug_log("failed to create logs directory");
+        return;
+    }
+    let path = dir.join("hooks.jsonl");
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let entry = serde_json::json!({
+        "ts": ts,
+        "source": source,
+        "project": project,
+        "payload": payload,
+    });
+    match OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(mut file) => {
+            use std::io::Write;
+            let _ = writeln!(file, "{}", entry);
+        }
+        Err(_) => debug_log("failed to open hook log file"),
+    }
+}
+
+fn project_name_from_payload(payload: &serde_json::Value) -> Option<String> {
+    let keys = [
+        "cwd",
+        "project_dir",
+        "project_path",
+        "workspace",
+        "repo_root",
+        "git_root",
+        "working_directory",
+        "workdir",
+    ];
+
+    for key in keys {
+        if let Some(path) = payload.get(key).and_then(|v| v.as_str()) {
+            if let Some(name) = project_name_from_path(path) {
+                return Some(name);
+            }
+        }
+    }
+
+    if let Ok(path) = std::env::var("CLAUDE_PROJECT_DIR") {
+        if let Some(name) = project_name_from_path(&path) {
+            return Some(name);
+        }
+    }
+
+    if let Ok(dir) = std::env::current_dir() {
+        if let Some(path) = dir.to_str() {
+            if let Some(name) = project_name_from_path(path) {
+                return Some(name);
+            }
+        }
+    }
+
+    None
+}
+
+fn project_name_from_path(path: &str) -> Option<String> {
+    let trimmed = path.trim_end_matches(std::path::MAIN_SEPARATOR);
+    if trimmed.is_empty() {
+        return None;
+    }
+    std::path::Path::new(trimmed)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
+}
+
+fn shell_escape(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+    let mut out = String::from("'");
+    for ch in value.chars() {
+        if ch == '\'' {
+            out.push_str("'\"'\"'");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('\'');
+    out
+}
+
+fn humanize_label(raw: &str) -> String {
+    if raw.trim().is_empty() {
+        return "Notification".to_string();
+    }
+    let mut out = String::with_capacity(raw.len() + 8);
+    let mut prev: Option<char> = None;
+    for ch in raw.chars() {
+        if ch == '_' || ch == '-' {
+            if !out.ends_with(' ') {
+                out.push(' ');
+            }
+            prev = Some(' ');
+            continue;
+        }
+        if let Some(p) = prev {
+            if p.is_ascii_lowercase() && ch.is_ascii_uppercase() && !out.ends_with(' ') {
+                out.push(' ');
+            }
+        }
+        out.push(ch);
+        prev = Some(ch);
+    }
+    let words: Vec<String> = out
+        .split_whitespace()
+        .map(|w| {
+            let mut chars = w.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+                None => String::new(),
+            }
+        })
+        .filter(|w| !w.is_empty())
+        .collect();
+    if words.is_empty() {
+        "Notification".to_string()
+    } else {
+        words.join(" ")
+    }
 }
 
 fn run() -> Result<(), NotifallError> {
@@ -335,9 +482,20 @@ fn handle_focus(args: FocusArgs) -> Result<(), NotifallError> {
         .clone()
         .or_else(|| std::env::var("DING_TERMINAL_APP").ok())
         .or_else(|| std::env::var("TERM_PROGRAM").ok());
+    let project = args
+        .project
+        .or_else(|| std::env::var("DING_PROJECT").ok());
+    let ghostty_focus = is_ghostty_terminal(terminal.as_deref());
 
     if !args.no_activate {
         activate_terminal(terminal.as_deref());
+    }
+    if !args.no_activate {
+        if let Some(project) = project.as_deref() {
+            if ghostty_focus {
+                focus_ghostty_tab(project);
+            }
+        }
     }
 
     let tmux_session = args
@@ -1336,6 +1494,15 @@ fn resolve_macos_config(
             entry.app_bundle_id = Some(bundle_id);
         }
     }
+
+    // Fallback: if still no bundle id, create a default bundle so notifications work.
+    if macos.as_ref().and_then(|m| m.app_bundle_id.as_ref()).is_none() {
+        if let Some(bundle_id) = ensure_default_bundle() {
+            let entry = macos.get_or_insert_with(MacosConfig::default);
+            entry.app_bundle_id = Some(bundle_id);
+        }
+    }
+
     macos
 }
 
@@ -1391,80 +1558,137 @@ fn default_source_bundle_id(source: Option<&str>) -> Option<String> {
     None
 }
 
+fn ensure_default_bundle() -> Option<String> {
+    ensure_source_bundle("default", "Ding", "com.ding.default", &[])
+}
+
 fn ensure_source_bundle(
     source: &str,
     display_name: &str,
     bundle_id: &str,
     icon_bytes: &[u8],
 ) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    use crate::provider::macos::NOTIFIER_BINARY;
+
     let base_dir = std::env::var("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .or_else(|_| std::env::var("HOME").map(|h| PathBuf::from(h).join(".cache")))
         .unwrap_or_else(|_| std::env::temp_dir());
     let app_dir = base_dir.join("ding/apps").join(format!("{}.app", source));
     let contents = app_dir.join("Contents");
-    let macos = contents.join("MacOS");
+    let macos_dir = contents.join("MacOS");
     let resources = contents.join("Resources");
 
-    if fs::create_dir_all(&macos).is_err() || fs::create_dir_all(&resources).is_err() {
+    if fs::create_dir_all(&macos_dir).is_err() || fs::create_dir_all(&resources).is_err() {
         return None;
     }
 
-    let icon_name = format!("{}.icns", source);
-    let icon_path = resources.join(&icon_name);
-    let icon_changed = match write_if_changed(&icon_path, icon_bytes) {
-        Ok(changed) => changed,
-        Err(_) => return None,
-    };
+    let mut anything_changed = false;
 
+    // Write icon if provided.
+    let has_icon = !icon_bytes.is_empty();
+    let icon_name = format!("{}.icns", source);
+    if has_icon {
+        let icon_path = resources.join(&icon_name);
+        match write_if_changed(&icon_path, icon_bytes) {
+            Ok(changed) => {
+                if changed {
+                    anything_changed = true;
+                }
+            }
+            Err(_) => return None,
+        }
+    }
+
+    // Write Info.plist (rebuild if anything changed or it doesn't exist).
     let plist_path = contents.join("Info.plist");
-    if !plist_path.exists() || icon_changed {
+    if !plist_path.exists() || anything_changed {
         let icon_version = icon_bytes
             .iter()
             .fold(0u32, |acc, byte| acc.wrapping_add(*byte as u32));
+
+        // Only include CFBundleIconFile when there's an actual icon.
+        let icon_plist_entry = if has_icon {
+            format!(
+                "  <key>CFBundleIconFile</key>\n  <string>{}</string>\n",
+                icon_name
+            )
+        } else {
+            String::new()
+        };
+
         let plist = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key>
-  <string>{}</string>
+  <string>{display_name}</string>
   <key>CFBundleIdentifier</key>
-  <string>{}</string>
+  <string>{bundle_id}</string>
   <key>CFBundleVersion</key>
-  <string>{}</string>
+  <string>{icon_version}</string>
   <key>CFBundleShortVersionString</key>
-  <string>{}</string>
+  <string>{icon_version}</string>
   <key>CFBundleExecutable</key>
   <string>ding-helper</string>
-  <key>CFBundleIconFile</key>
-  <string>{}</string>
-  <key>LSUIElement</key>
+{icon_entry}  <key>LSUIElement</key>
   <true/>
 </dict>
 </plist>
 "#,
-            display_name, bundle_id, icon_version, icon_version, icon_name
+            display_name = display_name,
+            bundle_id = bundle_id,
+            icon_version = icon_version,
+            icon_entry = icon_plist_entry,
         );
         if fs::write(&plist_path, plist).is_err() {
             return None;
         }
+        anything_changed = true;
     }
 
-    let exec_path = macos.join("ding-helper");
-    if !exec_path.exists() {
-        let script = b"#!/bin/sh\nexit 0\n";
-        if fs::write(&exec_path, script).is_err() {
-            return None;
+    // Write the real notifier binary (not a dummy shell script).
+    let exec_path = macos_dir.join("ding-helper");
+    #[cfg(target_os = "macos")]
+    {
+        match write_if_changed(&exec_path, NOTIFIER_BINARY) {
+            Ok(changed) => {
+                if changed {
+                    anything_changed = true;
+                    // Set executable permission.
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        if let Ok(mut perms) = fs::metadata(&exec_path).map(|m| m.permissions()) {
+                            perms.set_mode(0o755);
+                            let _ = fs::set_permissions(&exec_path, perms);
+                        }
+                    }
+                }
+            }
+            Err(_) => return None,
         }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Ok(mut perms) = fs::metadata(&exec_path).map(|m| m.permissions()) {
-                perms.set_mode(0o755);
-                let _ = fs::set_permissions(&exec_path, perms);
+    }
+
+    // Non-macOS: write a placeholder so the build doesn't break.
+    #[cfg(not(target_os = "macos"))]
+    {
+        if !exec_path.exists() {
+            let script = b"#!/bin/sh\nexit 0\n";
+            if fs::write(&exec_path, script).is_err() {
+                return None;
             }
         }
+    }
+
+    // Ad-hoc codesign the bundle whenever anything changed.
+    if anything_changed {
+        let _ = Command::new("codesign")
+            .args(["-s", "-", "--force", "--deep"])
+            .arg(&app_dir)
+            .status();
     }
 
     let lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
@@ -1628,6 +1852,54 @@ fn activate_terminal(terminal: Option<&str>) {
             .args(["-e", &format!("tell application \"{}\" to activate", app)])
             .status();
     }
+}
+
+fn is_ghostty_terminal(terminal: Option<&str>) -> bool {
+    match terminal {
+        Some(name) if name.eq_ignore_ascii_case("ghostty") => true,
+        Some(name) if name.eq_ignore_ascii_case("ghostty.app") => true,
+        _ => false,
+    }
+}
+
+fn focus_ghostty_tab(project: &str) {
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    if project.trim().is_empty() {
+        return;
+    }
+
+    let script = r#"
+tell application "System Events"
+  tell process "Ghostty"
+    set targetProject to (system attribute "DING_PROJECT")
+    if targetProject is missing value then
+      return
+    end if
+    set frontmost to true
+    repeat with w in windows
+      try
+        set tg to tab group 1 of w
+        repeat with t in UI elements of tg
+          set tname to name of t
+          if tname contains targetProject then
+            perform action "AXRaise" of w
+            perform action "AXPress" of t
+            return
+          end if
+        end repeat
+      end try
+    end repeat
+  end tell
+end tell
+"#;
+
+    let _ = Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .env("DING_PROJECT", project)
+        .status();
 }
 
 fn print_send_output(
@@ -1989,6 +2261,8 @@ fn read_hook_payload(json: Option<&str>) -> Result<serde_json::Value, NotifallEr
 }
 
 fn handle_claude_hook(payload: serde_json::Value) -> Result<(), NotifallError> {
+    let project = project_name_from_payload(&payload);
+    log_hook_payload("claude", &payload, project.as_deref());
     let hook = payload
         .get("hook_event_name")
         .and_then(|v| v.as_str())
@@ -2000,19 +2274,25 @@ fn handle_claude_hook(payload: serde_json::Value) -> Result<(), NotifallError> {
         .unwrap_or("")
         .to_string();
 
-    let title = if hook == "Notification" {
+    let summary = if hook == "Notification" {
         let ntype = payload
             .get("notification_type")
             .and_then(|v| v.as_str())
             .unwrap_or("notification");
-        format!("Claude Code: {}", ntype)
+        humanize_label(ntype)
     } else if hook == "Stop" || hook == "SubagentStop" {
         if message.is_empty() {
             message = "Task completed".to_string();
         }
-        "Claude Code: finished".to_string()
+        "Finished".to_string()
     } else {
-        format!("Claude Code: {}", hook)
+        humanize_label(hook)
+    };
+
+    let title = if let Some(project) = project.as_deref() {
+        format!("[{project}] {summary}")
+    } else {
+        summary
     };
 
     if message.is_empty() {
@@ -2024,7 +2304,16 @@ fn handle_claude_hook(payload: serde_json::Value) -> Result<(), NotifallError> {
     }
 
     let (title, message) = truncate_message(title, message);
-    let on_click = format!("{} focus", std::env::current_exe()?.display());
+    let exe = std::env::current_exe()?;
+    let on_click = if let Some(project) = project.as_deref() {
+        format!(
+            "{} focus --project {}",
+            exe.display(),
+            shell_escape(project)
+        )
+    } else {
+        format!("{} focus", exe.display())
+    };
     let args = SendArgs {
         title: Some(title),
         message,
@@ -2057,6 +2346,8 @@ fn handle_claude_hook(payload: serde_json::Value) -> Result<(), NotifallError> {
 }
 
 fn handle_codex_hook(payload: serde_json::Value) -> Result<(), NotifallError> {
+    let project = project_name_from_payload(&payload);
+    log_hook_payload("codex", &payload, project.as_deref());
     let ntype = payload.get("type").and_then(|v| v.as_str()).unwrap_or("");
     if ntype != "agent-turn-complete" {
         return Ok(());
@@ -2065,30 +2356,44 @@ fn handle_codex_hook(payload: serde_json::Value) -> Result<(), NotifallError> {
     let assistant_message = payload
         .get("last-assistant-message")
         .and_then(|v| v.as_str());
-    let title = if let Some(msg) = assistant_message {
-        format!("Codex: {}", msg)
-    } else {
-        "Codex: Turn Complete".to_string()
-    };
+    let summary = "Turn Complete".to_string();
 
     let input_messages = payload
         .get("input_messages")
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
-    let mut message = input_messages
-        .iter()
-        .filter_map(|v| v.as_str())
-        .collect::<Vec<_>>()
-        .join(" ")
-        .trim()
-        .to_string();
+    let mut message = if let Some(msg) = assistant_message {
+        msg.to_string()
+    } else {
+        input_messages
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect::<Vec<_>>()
+            .join(" ")
+            .trim()
+            .to_string()
+    };
     if message.is_empty() {
         message = " ".to_string();
     }
 
+    let title = if let Some(project) = project.as_deref() {
+        format!("[{project}] {summary}")
+    } else {
+        summary
+    };
     let (title, message) = truncate_message(title, message);
-    let on_click = format!("{} focus", std::env::current_exe()?.display());
+    let exe = std::env::current_exe()?;
+    let on_click = if let Some(project) = project.as_deref() {
+        format!(
+            "{} focus --project {}",
+            exe.display(),
+            shell_escape(project)
+        )
+    } else {
+        format!("{} focus", exe.display())
+    };
     let args = SendArgs {
         title: Some(title),
         message,
