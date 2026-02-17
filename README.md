@@ -22,10 +22,19 @@ cd ding
 cargo install --path .
 ```
 
+If you have [just](https://github.com/casey/just) installed:
+
+```bash
+git clone https://github.com/fcoury/ding.git
+cd ding
+just install
+```
+
 ### Requirements
 
 - Rust 1.70+
-- macOS 10.13+ (for Notification Center support)
+- macOS 11.0+ (for Notification Center support)
+- Xcode Command Line Tools (`xcode-select --install`)
 
 ## Quick Start
 
@@ -267,6 +276,43 @@ ding listen \
   --token "secret" \
   --require-token \
   --allow-host 192.168.1.0/24
+```
+
+## macOS Focus / Do Not Disturb
+
+If you use Focus or Do Not Disturb, notifications from ding will be silenced by default. To allow them through:
+
+1. Open **System Settings > Focus > [Your Focus Mode]**
+2. Under **Allowed Notifications**, click **Apps** then the **+** button
+3. Search for "Ding" and add it
+
+The app bundles must be symlinked into `~/Applications` to appear in the picker:
+
+```bash
+ln -s ~/.cache/ding/apps/default.app ~/Applications/Ding.app
+ln -s ~/.cache/ding/apps/claude.app ~/Applications/"Ding Claude.app"
+ln -s ~/.cache/ding/apps/codex.app ~/Applications/"Ding Codex.app"
+```
+
+Add each app you want to receive notifications from during Focus mode.
+
+## Testing
+
+```bash
+# Basic notification
+ding send "Hello, World!"
+
+# Notification with Claude source icon
+ding send --source claude "Test from Claude"
+
+# Notification with Codex source icon
+ding send --source codex "Test from Codex"
+
+# Silent notification (no sound)
+ding send --silent "Quiet notification"
+
+# Wait for click
+ding send --wait-for-click "Click me"
 ```
 
 ## Examples
