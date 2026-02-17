@@ -114,6 +114,10 @@ int main(int argc, const char *argv[]) {
             } else if (settings.authorizationStatus == UNAuthorizationStatusNotDetermined) {
                 UNAuthorizationOptions opts =
                     UNAuthorizationOptionAlert | UNAuthorizationOptionSound;
+                // Request time-sensitive permission so notifications break through Focus/DND.
+                if (@available(macOS 12.0, *)) {
+                    opts |= UNAuthorizationOptionTimeSensitive;
+                }
                 [center requestAuthorizationWithOptions:opts
                                       completionHandler:^(BOOL granted, NSError *error) {
                     authorized = granted;
