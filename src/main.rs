@@ -507,15 +507,24 @@ fn handle_focus(args: FocusArgs) -> Result<(), NotifallError> {
     let tmux_pane = args
         .tmux_pane
         .or_else(|| std::env::var("DING_TMUX_PANE").ok());
+    let tmux_client = args
+        .tmux_client
+        .or_else(|| std::env::var("DING_TMUX_CLIENT").ok());
 
     if tmux_session.is_none() && tmux_window.is_none() && tmux_pane.is_none() {
         return Ok(());
     }
 
+    // switch-client needs an explicit -c <client> to target the right tmux
+    // client, otherwise tmux picks one arbitrarily (often the most recent),
+    // which scrambles sessions across multiple terminal windows.
     if let Some(session) = tmux_session.as_deref() {
-        Command::new("tmux")
-            .args(["switch-client", "-t", session])
-            .status()?;
+        let mut cmd = Command::new("tmux");
+        cmd.arg("switch-client").arg("-t").arg(session);
+        if let Some(client) = tmux_client.as_deref() {
+            cmd.arg("-c").arg(client);
+        }
+        cmd.status()?;
     }
     if let Some(window) = tmux_window.as_deref() {
         Command::new("tmux")
