@@ -1659,25 +1659,36 @@ fn ensure_source_bundle(
     }
 
     // Write the real notifier binary (not a dummy shell script).
+    // We can't use write_if_changed on the binary directly because codesigning
+    // modifies the Mach-O on disk, causing a mismatch with the embedded bytes
+    // on every run. Instead, track a hash of the embedded binary in a sidecar file.
     let exec_path = macos_dir.join("ding-helper");
     #[cfg(target_os = "macos")]
     {
-        match write_if_changed(&exec_path, NOTIFIER_BINARY) {
-            Ok(changed) => {
-                if changed {
-                    anything_changed = true;
-                    // Set executable permission.
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::fs::PermissionsExt;
-                        if let Ok(mut perms) = fs::metadata(&exec_path).map(|m| m.permissions()) {
-                            perms.set_mode(0o755);
-                            let _ = fs::set_permissions(&exec_path, perms);
-                        }
-                    }
+        let version_path = macos_dir.join(".ding-helper-version");
+        let current_hash = NOTIFIER_BINARY
+            .iter()
+            .fold(0u64, |acc, &b| acc.wrapping_mul(31).wrapping_add(b as u64));
+        let version_tag = format!("{:016x}", current_hash);
+        let needs_update = !exec_path.exists()
+            || fs::read_to_string(&version_path)
+                .map(|v| v.trim() != version_tag)
+                .unwrap_or(true);
+
+        if needs_update {
+            if fs::write(&exec_path, NOTIFIER_BINARY).is_err() {
+                return None;
+            }
+            let _ = fs::write(&version_path, &version_tag);
+            anything_changed = true;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(mut perms) = fs::metadata(&exec_path).map(|m| m.permissions()) {
+                    perms.set_mode(0o755);
+                    let _ = fs::set_permissions(&exec_path, perms);
                 }
             }
-            Err(_) => return None,
         }
     }
 
